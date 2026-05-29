@@ -2,7 +2,7 @@
 
 ## Projet
 Tracker d'investissement 100% local. Interface web servie par Python stdlib.
-Depuis V2.20, le projet est multi-fichiers : backend Python séparé du frontend.
+Depuis V1.0, le projet est multi-fichiers : backend Python séparé du frontend.
 
 ## Stack
 - Python 3.13, Debian Linux
@@ -64,7 +64,7 @@ Sans yfinance : fallback HTTP direct Yahoo (moins fiable).
   `historique`, `ctoDivs`, `fxRates`
 - `ctoDivs` : champ prévu dans les données, interface non encore implémentée
 - `historique[n].classes` : objet `{"Actions": 1100, "Métaux": 390}` —
-  remplace les clés plates `actions`/`metaux`/`immo` depuis V2.18.
+  remplace les clés plates `actions`/`metaux`/`immo` depuis V1.0.
   `crypto` reste à la racine de l'entrée historique.
 - DEFAULT_DATA : currency: "usd" (et non "eur"), brokers: [], classes: []
   (listes vides — aucune valeur par défaut injectée)
@@ -91,7 +91,7 @@ Sans yfinance : fallback HTTP direct Yahoo (moins fiable).
 ## Points de vigilance connus
 - La devise dans Cryptos est fonctionnelle (influe sur l'appel CoinGecko) —
   ne pas confondre avec la devise CTO (informatif seulement)
-- `classe: "Metaux"` (sans accent) est un legacy antérieur à V2.18 —
+- `classe: "Metaux"` (sans accent) est un legacy antérieur à V1.0 —
   migration silencieuse au chargement JS
 - `fxRates` peut être absent sur une install fraîche
 - Frankfurter : taux disponibles depuis le 04/01/1999 uniquement —

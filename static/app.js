@@ -367,12 +367,12 @@ function renderOptions(){
 }
 function renderInfo(){
   return`<div class="card">
-    <h3>📊 Portfolio — V2.22</h3>
+    <h3>📊 Portfolio Tracker — V1.0</h3>
     <p style="color:var(--text2);margin-top:4px;margin-bottom:24px;font-size:13px">Local investment tracker</p>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>V2.22</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>V1.0</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>May 2026</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>Nicolas Weber</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>Carpe Diem</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:10px;font-weight:600">Documentation</label>
