@@ -1,0 +1,14 @@
+# Données personnelles — ne jamais commiter
+portefeuille_data.json
+
+# Workflow dev — fichiers de session Claude
+.dev-mode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
