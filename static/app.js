@@ -2,11 +2,11 @@
 // Règle : un taux posé manuellement ('manual') n'est jamais écrasé
 // automatiquement. Tout nouveau déclencheur d'invalidation DOIT passer
 // par cette fonction — ne jamais écrire le pattern inline.
-// Miroir Python : handle_syncfx dans portefeuille.py (même règle, ligne unique).
+// Miroir Python : handle_syncfx dans portfolio_tracker.py (même règle, ligne unique).
 function invalidateFxSource(obj, sourceField, value='ko'){
   obj[sourceField]=value;
 }
-// parseCryptoTicker — source de vérité partagée avec portefeuille.py (parse_crypto_ticker)
+// parseCryptoTicker — source de vérité partagée avec portfolio_tracker.py (parse_crypto_ticker)
 // Toute modification des devises acceptées ou de la logique de parsing
 // doit être répercutée manuellement dans les deux fichiers.
 let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorMsg=null;
@@ -453,7 +453,7 @@ function cancelOptions(){pendingSettings=JSON.parse(JSON.stringify(DATA.settings
 function exportJSON(){
   const b=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);
-  a.download='portefeuille_data.json';a.click();
+  a.download='portfolio_data.json';a.click();
 }
 function importJSON(input){
   const f=input.files[0];if(!f)return;

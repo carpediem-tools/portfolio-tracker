@@ -1,7 +1,7 @@
 # 📊 Portfolio — User Documentation
 
 > 100% local investment tracker · Python 3.13
-> Access: `http://localhost:8080` after launching `python3 portefeuille.py`
+> Access: `http://localhost:8080` after launching `python3 portfolio_tracker.py`
 
 ---
 
@@ -33,7 +33,7 @@ The tracker runs entirely locally, with no cloud or mandatory external dependenc
 | Component | Details |
 |---|---|
 | Server | `http.server` Python, `localhost:8080` |
-| Data | `portefeuille_data.json` — same folder as the script |
+| Data | `portfolio_data.json` — same folder as the script |
 | Stock prices | Yahoo Finance via `yfinance` (pip) or direct HTTP fallback |
 | Crypto prices | CoinGecko public API, no key required |
 | Daily FX rates | Yahoo Finance (`EURUSD=X`, `EURCHF=X`, `USDCHF=X`) — Dashboard consolidations |
@@ -248,7 +248,7 @@ Select EUR, USD or CHF then click **💾 Save** to apply.
 Configurable lists. Brokers and asset classes can be added, renamed, and deleted. A deletion first checks that no position (CTO or history row) references the item; otherwise it is blocked with an explicit message.
 
 ### Export / Import JSON
-- **Export**: downloads `portefeuille_data.json` — useful for backup or migration.
+- **Export**: downloads `portfolio_data.json` — useful for backup or migration.
 - **Import**: loads an existing JSON file and overwrites the current data.
 
 ### Export CSV (ZIP)
@@ -310,7 +310,7 @@ The tracker uses **two distinct FX rate sources** depending on the use case:
 - `EURCHF=X` : EUR/CHF rate
 - `USDCHF=X` : USD/CHF rate
 
-Stored in `portefeuille_data.json` under the `fxRates` key, used for Dashboard consolidations and CTO/Crypto top banners.
+Stored in `portfolio_data.json` under the `fxRates` key, used for Dashboard consolidations and CTO/Crypto top banners.
 
 **Historical rates** — fetched from the Frankfurter API (ECB), fixed at the date of each transaction (purchase / sale). Used to calculate realized P&L in the Sales screens. See [section 11](#11-historical-fx-rates-frankfurter) for full details.
 
@@ -776,7 +776,7 @@ The live price is invalidated. No automatic sync is triggered at this point: a s
 <a id="14-data-and-storage"></a>
 ## 14. Data and storage
 
-### File `portefeuille_data.json`
+### File `portfolio_data.json`
 
 Every change made in the interface is **saved immediately** to this file. There is no global Save button.
 

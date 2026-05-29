@@ -2,9 +2,9 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
 ║  PORTEFEUILLE — Tracker d'investissement 100% local         ║
-║  Usage : python3 portefeuille.py                             ║
+║  Usage : python3 portfolio_tracker.py                        ║
 ║  Ouvre : http://localhost:8080                                ║
-║  Données : portefeuille_data.json (même dossier)             ║
+║  Données : portfolio_data.json (même dossier)                ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 import http.server, http.cookiejar, json, urllib.request, urllib.parse
@@ -17,7 +17,7 @@ from datetime import datetime
 # doit être répercutée manuellement dans les deux fichiers.
 
 PORT = 8080
-DATA_FILE = Path(__file__).parent / "portefeuille_data.json"
+DATA_FILE = Path(__file__).parent / "portfolio_data.json"
 STATIC_DIR = Path(__file__).parent / "static"
 
 DEFAULT_DATA = {
@@ -576,12 +576,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════╗")
-    print("║  📊 Portefeuille — Tracker local                ║")
-    print(f"║  → http://localhost:{PORT}                       ║")
-    print(f"║  → Données : {DATA_FILE.name}                   ║")
-    print("║  Pour les prix actions :                         ║")
-    print("║    pip install yfinance --break-system-packages  ║")
-    print("║  Ctrl+C pour quitter                             ║")
+    print("║  📊 Portfolio Tracker — running locally         ║")
+    print(f"║  → http://localhost:{PORT}                        ║")
+    print(f"║  → Data file : {DATA_FILE.name}              ║")
+    print("║  For stock prices :                             ║")
+    print("║    pip install yfinance --break-system-packages ║")
+    print("║  Ctrl+C to quit                                 ║")
     print("╚══════════════════════════════════════════════════╝")
     threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
     try:

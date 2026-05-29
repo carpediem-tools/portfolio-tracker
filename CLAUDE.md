@@ -13,12 +13,12 @@ Depuis V2.20, le projet est multi-fichiers : backend Python séparé du frontend
 - Frontend : HTML/CSS/JS vanilla, fichiers statiques dans static/
 
 ## Fichiers
-- `portefeuille.py`              ← backend Python pur
+- `portfolio_tracker.py`         ← backend Python pur
 - `static/index.html`            ← structure HTML
 - `static/style.css`             ← styles
 - `static/app.js`                ← logique frontend
-- `portefeuille_data.json`       ← données persistantes, même dossier
-- `portefeuille_documentation.md` ← doc utilisateur
+- `portfolio_data.json`          ← données persistantes, même dossier
+- `portfolio_documentation.md`   ← doc utilisateur
 
 ## Architecture
 Le backend sert les fichiers statiques via do_GET :
@@ -39,16 +39,16 @@ Fonctions backend principales :
 
 ## Conventions
 - Modifier CSS ou JS → rechargement navigateur suffit, pas de redémarrage serveur
-- Modifier portefeuille.py → redémarrage serveur obligatoire
+- Modifier portfolio_tracker.py → redémarrage serveur obligatoire
 - Toute invalidation de taux FX dans app.js DOIT passer par `invalidateFxSource()`
   — ne jamais écrire le pattern inline
-- `parseCryptoTicker` existe en deux versions (app.js + portefeuille.py) —
+- `parseCryptoTicker` existe en deux versions (app.js + portfolio_tracker.py) —
   duplication délibérée : validation locale dans chaque couche, pas d'aller-retour réseau, validation instantanée à chaque frappe. Toute évolution du format ticker crypto ou des devises supportées DOIT être appliquée dans les deux fichiers simultanément.
 
 ## Lancer le projet
 ```bash
 cd ~/Documents/Informatique/Portefeuille_V2/work/portefeuille
-python3 portefeuille.py
+python3 portfolio_tracker.py
 # Ouvre automatiquement http://localhost:8080
 ```
 
