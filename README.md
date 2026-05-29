@@ -58,7 +58,7 @@ pip install yfinance
 python3 portfolio_tracker.py
 ```
 
-Then open `http://localhost:8080` in a browser.
+Then the browser opens at `http://localhost:8080`.
 
 ---
 
