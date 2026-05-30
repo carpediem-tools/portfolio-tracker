@@ -87,9 +87,9 @@ function toast(msg,bg){
 }
 
 // Helpers
-const CURRENCIES={eur:{symbol:'€',pos:'after',code:'eur'},usd:{symbol:'$',pos:'before',code:'usd'},chf:{symbol:'CHF',pos:'after',code:'chf'}};
+const CURRENCIES={eur:{symbol:'€',pos:'after',code:'eur'},usd:{symbol:'$',pos:'before',code:'usd'},chf:{symbol:'CHF',pos:'after',code:'chf'},gbp:{symbol:'£',pos:'before',code:'gbp'},jpy:{symbol:'¥',pos:'before',code:'jpy'},hkd:{symbol:'HK$',pos:'before',code:'hkd'},cny:{symbol:'CN¥',pos:'before',code:'cny'}};
 function getCur(){return CURRENCIES[(DATA&&DATA.settings&&DATA.settings.currency)||'eur']||CURRENCIES.eur;}
-function fmt(n){if(n==null)return '—';const c=getCur();const v=n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
+function fmt(n){if(n==null)return '—';const c=getCur();const dec=c.code==='jpy'?0:2;const v=n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
 
 function getFx(){return DATA.fxRates||{};}
 function convert(amount,fromCur,toCur){
@@ -100,16 +100,64 @@ function convert(amount,fromCur,toCur){
   if(t==='eur'){
     if(f==='usd') return fx.eurusd?amount/fx.eurusd:null;
     if(f==='chf') return fx.eurchf?amount/fx.eurchf:null;
+    if(f==='gbp') return fx.eurgbp?amount/fx.eurgbp:null;
+    if(f==='jpy') return fx.eurjpy?amount/fx.eurjpy:null;
+    if(f==='hkd') return fx.eurhkd?amount/fx.eurhkd:null;
+    if(f==='cny') return fx.eurcny?amount/fx.eurcny:null;
   }
   // Vers USD
   if(t==='usd'){
     if(f==='eur') return fx.eurusd?amount*fx.eurusd:null;
     if(f==='chf') return fx.usdchf?amount/fx.usdchf:null;
+    if(f==='gbp') return (fx.eurgbp&&fx.eurusd)?amount/fx.eurgbp*fx.eurusd:null;
+    if(f==='jpy') return (fx.eurjpy&&fx.eurusd)?amount/fx.eurjpy*fx.eurusd:null;
+    if(f==='hkd') return (fx.eurhkd&&fx.eurusd)?amount/fx.eurhkd*fx.eurusd:null;
+    if(f==='cny') return (fx.eurcny&&fx.eurusd)?amount/fx.eurcny*fx.eurusd:null;
   }
   // Vers CHF
   if(t==='chf'){
     if(f==='eur') return fx.eurchf?amount*fx.eurchf:null;
     if(f==='usd') return fx.usdchf?amount*fx.usdchf:null;
+    if(f==='gbp') return (fx.eurgbp&&fx.eurchf)?amount/fx.eurgbp*fx.eurchf:null;
+    if(f==='jpy') return (fx.eurjpy&&fx.eurchf)?amount/fx.eurjpy*fx.eurchf:null;
+    if(f==='hkd') return (fx.eurhkd&&fx.eurchf)?amount/fx.eurhkd*fx.eurchf:null;
+    if(f==='cny') return (fx.eurcny&&fx.eurchf)?amount/fx.eurcny*fx.eurchf:null;
+  }
+  // Vers GBP
+  if(t==='gbp'){
+    if(f==='eur') return fx.eurgbp?amount*fx.eurgbp:null;
+    if(f==='usd') return (fx.eurusd&&fx.eurgbp)?amount/fx.eurusd*fx.eurgbp:null;
+    if(f==='chf') return (fx.eurchf&&fx.eurgbp)?amount/fx.eurchf*fx.eurgbp:null;
+    if(f==='jpy') return (fx.eurjpy&&fx.eurgbp)?amount/fx.eurjpy*fx.eurgbp:null;
+    if(f==='hkd') return (fx.eurhkd&&fx.eurgbp)?amount/fx.eurhkd*fx.eurgbp:null;
+    if(f==='cny') return (fx.eurcny&&fx.eurgbp)?amount/fx.eurcny*fx.eurgbp:null;
+  }
+  // Vers JPY
+  if(t==='jpy'){
+    if(f==='eur') return fx.eurjpy?amount*fx.eurjpy:null;
+    if(f==='usd') return (fx.eurusd&&fx.eurjpy)?amount/fx.eurusd*fx.eurjpy:null;
+    if(f==='chf') return (fx.eurchf&&fx.eurjpy)?amount/fx.eurchf*fx.eurjpy:null;
+    if(f==='gbp') return (fx.eurgbp&&fx.eurjpy)?amount/fx.eurgbp*fx.eurjpy:null;
+    if(f==='hkd') return (fx.eurhkd&&fx.eurjpy)?amount/fx.eurhkd*fx.eurjpy:null;
+    if(f==='cny') return (fx.eurcny&&fx.eurjpy)?amount/fx.eurcny*fx.eurjpy:null;
+  }
+  // Vers HKD
+  if(t==='hkd'){
+    if(f==='eur') return fx.eurhkd?amount*fx.eurhkd:null;
+    if(f==='usd') return (fx.eurusd&&fx.eurhkd)?amount/fx.eurusd*fx.eurhkd:null;
+    if(f==='chf') return (fx.eurchf&&fx.eurhkd)?amount/fx.eurchf*fx.eurhkd:null;
+    if(f==='gbp') return (fx.eurgbp&&fx.eurhkd)?amount/fx.eurgbp*fx.eurhkd:null;
+    if(f==='jpy') return (fx.eurjpy&&fx.eurhkd)?amount/fx.eurjpy*fx.eurhkd:null;
+    if(f==='cny') return (fx.eurcny&&fx.eurhkd)?amount/fx.eurcny*fx.eurhkd:null;
+  }
+  // Vers CNY
+  if(t==='cny'){
+    if(f==='eur') return fx.eurcny?amount*fx.eurcny:null;
+    if(f==='usd') return (fx.eurusd&&fx.eurcny)?amount/fx.eurusd*fx.eurcny:null;
+    if(f==='chf') return (fx.eurchf&&fx.eurcny)?amount/fx.eurchf*fx.eurcny:null;
+    if(f==='gbp') return (fx.eurgbp&&fx.eurcny)?amount/fx.eurgbp*fx.eurcny:null;
+    if(f==='jpy') return (fx.eurjpy&&fx.eurcny)?amount/fx.eurjpy*fx.eurcny:null;
+    if(f==='hkd') return (fx.eurhkd&&fx.eurcny)?amount/fx.eurhkd*fx.eurcny:null;
   }
   return null;
 }
@@ -121,6 +169,11 @@ function convert(amount,fromCur,toCur){
 //   'ROG.VX'    → 'chf'
 //   'VUSA.AS'   → 'eur'
 //   'DBK.DE'    → 'eur'
+//   'SHEL.L'    → 'gbp'
+//   '7203.T'    → 'jpy'
+//   '0700.HK'   → 'hkd'
+//   '600519.SS' → 'cny'
+//   '000858.SZ' → 'cny'
 //   'AAPL.XX'   → null   (suffixe non géré)
 //   ''          → null
 //   null        → null
@@ -134,8 +187,16 @@ function getCurrencyFromTicker(ticker){
   const suffix=t.slice(dot+1).toUpperCase();
   const EUR_SUFFIXES=['PA','AS','DE','F','MI','BR','LS','MC'];
   const CHF_SUFFIXES=['SW','VX'];
+  const GBP_SUFFIXES=['L'];
+  const JPY_SUFFIXES=['T'];
+  const HKD_SUFFIXES=['HK'];
+  const CNY_SUFFIXES=['SS','SZ'];
   if(EUR_SUFFIXES.includes(suffix))return 'eur';
   if(CHF_SUFFIXES.includes(suffix))return 'chf';
+  if(GBP_SUFFIXES.includes(suffix))return 'gbp';
+  if(JPY_SUFFIXES.includes(suffix))return 'jpy';
+  if(HKD_SUFFIXES.includes(suffix))return 'hkd';
+  if(CNY_SUFFIXES.includes(suffix))return 'cny';
   return null;
 }
 // parseCryptoTicker — cas de test
@@ -156,17 +217,18 @@ function parseCryptoTicker(ticker){
   const id=parts[0].trim();
   const currency=parts[1].trim().toLowerCase();
   if(!id)return null;
-  if(!['eur','usd','chf'].includes(currency))return null;
+  if(!['eur','usd','chf','gbp','jpy','hkd','cny'].includes(currency))return null;
   return{id,currency};
 }
 function fmtNative(n,curCode){
   if(n==null||!curCode)return '—';
   const c=CURRENCIES[curCode.toLowerCase()]||getCur();
-  const v=n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dec=curCode.toLowerCase()==='jpy'?0:2;
+  const v=n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
   return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;
 }
 const fmtP=n=>n==null?'—':(n*100).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
-function fmtC(n,curCode){if(n==null)return '—';const c=CURRENCIES[curCode]||getCur();const v=n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
+function fmtC(n,curCode){if(n==null)return '—';const c=CURRENCIES[curCode]||getCur();const dec=(curCode||'').toLowerCase()==='jpy'?0:2;const v=n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
 const fmtQ=n=>!n?'':n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:6});
 function isoToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
 function isoNow(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
@@ -179,6 +241,7 @@ function calcPos(p){
   return{tq,ti,wac,valo,gp:p.livePrice?valo-ti:0,evol:p.livePrice&&ti?(valo-ti)/ti:0};
 }
 function calcTrade(t){
+  if(!(t.qSold>0&&t.priceBuy>0&&t.priceSell>0))return{ts:0,tb:0,gp:null,pct:null};
   const ts=(t.qSold||0)*(t.priceSell||0)-(t.feesSell||0);
   const tb=(t.qSold||0)*(t.priceBuy||0)+(t.feesBuy||0);
   return{ts,tb,gp:ts-tb,pct:tb?(ts-tb)/tb:0};
@@ -301,7 +364,7 @@ function renderOptions(){
     <div style="margin-bottom:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:8px;font-weight:600">Currency</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${[{v:'eur',l:'🇪🇺 Euro (€)'},{v:'usd',l:'🇺🇸 Dollar ($)'},{v:'chf',l:'🇨🇭 Swiss Franc (CHF)'}].map(c=>{
+        ${[{v:'eur',l:'🇪🇺 Euro (€)'},{v:'usd',l:'🇺🇸 Dollar ($)'},{v:'chf',l:'🇨🇭 Swiss Franc (CHF)'},{v:'gbp',l:'🇬🇧 Pound (£)'},{v:'jpy',l:'🇯🇵 Yen (¥)'},{v:'hkd',l:'🇭🇰 HK Dollar (HK$)'},{v:'cny',l:'🇨🇳 Yuan (CN¥)'}].map(c=>{
           const sel=cur===c.v;
           return `<button class="btn ${sel?'btn-blue':'btn-ghost'}" onclick="optSetCurrency('${c.v}')">${c.l}</button>`;
         }).join('')}
@@ -323,7 +386,7 @@ function renderOptions(){
             <button class="btn btn-ghost" onclick="optDeleteBrokerImm(${i})">✕</button>
           </div>`).join('')}
         ${optShowNewBroker?`<div style="display:flex;gap:6px;align-items:center">
-          <input id="opt-new-broker" placeholder="New broker…" value="${optNewBroker}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter')optAddBrokerNew()">
+          <input id="opt-new-broker" placeholder="New broker…" value="${optNewBroker}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter'){event.preventDefault();optAddBrokerNew();}">
           <button class="btn btn-ghost" onclick="optAddBrokerNew()">✔</button>
         </div>
         ${optNewBrokerErr?`<p style="color:var(--red);font-size:11px;margin-top:2px">${optNewBrokerErr}</p>`:''}`:``}
@@ -342,7 +405,7 @@ function renderOptions(){
             <button class="btn btn-ghost" onclick="optDeleteClassImm(${i})">✕</button>
           </div>`).join('')}
         ${optShowNewClass?`<div style="display:flex;gap:6px;align-items:center">
-          <input id="opt-new-class" placeholder="New class…" value="${optNewClass}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter')optAddClassNew()">
+          <input id="opt-new-class" placeholder="New class…" value="${optNewClass}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter'){event.preventDefault();optAddClassNew();}">
           <button class="btn btn-ghost" onclick="optAddClassNew()">✔</button>
         </div>
         ${optNewClassErr?`<p style="color:var(--red);font-size:11px;margin-top:2px">${optNewClassErr}</p>`:''}`:``}
@@ -480,6 +543,10 @@ function renderDash(){
     ps.forEach(p=>{const v=convertValo(p,p.c);if(v!=null)valo+=v;else excludedCount++;});
     return{name:cl,valo};
   });
+  const unclValo=ctoC.filter(p=>p.livePrice&&!p.classe).reduce((s,p)=>{
+    const v=convertValo(p,p.c);if(v!=null)return s+v;excludedCount++;return s;
+  },0);
+  if(unclValo>0)cls.push({name:'?',valo:unclValo});
   const crValo=crC.filter(p=>p.livePrice).reduce((s,p)=>{
     const v=convertValo(p,p.c);if(v!=null)return s+v;excludedCount++;return s;
   },0);
@@ -550,8 +617,8 @@ function renderSpot(type){
     return v!=null?s+v:s;
   },0);
   const totGP=totV-totI;
-  const cols=isCto?17:14;
-  const colgroupSpot=makeColgroup(isCto?[2,11,7,7,8,7,4,5,7,7,10,7,7,5,7,5,3]:[2,14,9,5,6,8,8,12,7,8,6,8,5,3]);
+  const cols=isCto?18:15;
+  const colgroupSpot=makeColgroup(isCto?[2,11,7,7,8,7,4,5,7,7,10,3,7,7,5,7,5,3]:[2,14,9,5,6,8,8,12,3,7,8,6,8,5,3]);
   const colgroupSub=makeColgroup([22,12,16,12,18,16,4]);
   let rows='';
   calcs.forEach(p=>{
@@ -571,8 +638,10 @@ function renderSpot(type){
       <td class="r mono computed">${fmtQ(c.tq)}</td>
       <td class="r mono computed">${c.wac>0?fmtNative(c.wac,p.currency):''}</td>
       <td class="r mono computed">${c.ti>0?fmtNative(c.ti,p.currency):''}</td>
-      <td class="${pBg(p)} mono" style="white-space:nowrap">
+      <td class="${pBg(p)} mono">
         ${pIco(p)} ${p.livePrice?fmtNative(p.livePrice,p.currency):'—'}
+      </td>
+      <td class="btn-col">
         <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualPrice('${type}',${p.id})">✏️</button>
       </td>
       <td style="font-size:10px;color:var(--text2)">${p.priceDate||''}</td>
@@ -626,7 +695,7 @@ function renderSpot(type){
     ${isCto?'<th>Broker</th><th>Class</th>':''}
     <th>Currency</th>
     <th class="r computed">Qty ←</th><th class="r computed">Avg cost ←</th><th class="r computed">Invested ←</th>
-    <th>Live price</th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
+    <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
     <th class="r">P&L</th><th class="r">Weight</th><th></th>`;
   return`<div class="card">
     <h3>${isCto?'💼 CTO — Open positions':'🪙 Cryptos — Open positions'}</h3>
@@ -673,7 +742,7 @@ function fxBg(source){
 }
 function calcTradeOptions(t){
   const c=calcTrade(t);
-  if(t.fxRateSell==null||t.fxRateBuy==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
+  if(t.fxRateSell==null||t.fxRateBuy==null||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
   const tsOpt=c.ts*t.fxRateSell;
   const tbOpt=c.tb*t.fxRateBuy;
   return{tsOpt,tbOpt,gpOpt:tsOpt-tbOpt};
@@ -717,8 +786,10 @@ function renderES(type){
     </td>
     <td class="r"><input type="number" step="any" value="${t.priceBuy||''}" onchange="upTrade('${key}',${t.id},'priceBuy',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.feesBuy||''}" onchange="upTrade('${key}',${t.id},'feesBuy',this.value)"></td>
-    <td class="${fxBg(t.fxRateBuySource)}" style="font-size:12px;white-space:nowrap">
+    <td class="${fxBg(t.fxRateBuySource)}" style="font-size:12px">
       ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(4):'—'}
+    </td>
+    <td class="btn-col">
       <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualFx('${key}',${t.id},'buy')">✏️</button>
     </td>
     <!-- VENTE -->
@@ -728,19 +799,21 @@ function renderES(type){
     <td class="r"><input type="number" step="any" value="${t.qSold||''}" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.priceSell||''}" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.feesSell||''}" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
-    <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px;white-space:nowrap">
+    <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px">
       ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(4):'—'}
+    </td>
+    <td class="btn-col">
       <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualFx('${key}',${t.id},'sell')">✏️</button>
     </td>
     <!-- TOTAL -->
     <td class="r mono" style="border-left:2px solid var(--accent)">${fmt(o.tbOpt)}</td>
     <td class="r mono">${fmt(o.tsOpt)}</td>
     <td class="r mono ${o.gpOpt!=null?gpC(o.gpOpt):''}">${o.gpOpt!=null?fmt(o.gpOpt):'—'}</td>
-    <td class="r mono ${gpC(c.pct)}">${fmtP(c.pct)}</td>
+    <td class="r mono ${c.pct!=null?gpC(c.pct):''}">${fmtP(c.pct)}</td>
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[5,5,5,3,9,5,4,8,9,4,5,4,8,5,5,5,3,3]:[7,6,3,9,4,4,8,9,4,4,4,8,5,5,5,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[5,5,5,3,9,5,4,6,3,9,4,5,4,6,3,7,6,5,3,3]:[7,6,3,9,4,4,6,3,9,4,4,4,6,3,8,7,7,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 CTO Sales':'📋 Crypto Sales'}</h3>
     <div class="kpis">
@@ -761,8 +834,8 @@ function renderES(type){
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroup}<thead>
     <tr>
       <th colspan="${isCto?4:3}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
-      <th colspan="4" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Buy</th>
-      <th colspan="5" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
+      <th colspan="5" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Buy</th>
+      <th colspan="6" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
       <th colspan="4" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Total</th>
       <th></th>
     </tr>
@@ -775,11 +848,13 @@ function renderES(type){
       <th class="r">Unit price</th>
       <th class="r">Fees B</th>
       <th>FX B</th>
+      <th class="btn-col"></th>
       <th style="border-left:2px solid var(--accent)">Sell date</th>
       <th class="r">Qty</th>
       <th class="r">Unit price</th>
       <th class="r">Fees S</th>
       <th>FX S</th>
+      <th class="btn-col"></th>
       <th class="r" style="border-left:2px solid var(--accent)">Total B (${cur})</th>
       <th class="r">Total S (${cur})</th>
       <th class="r">P&L (${cur})</th>
@@ -826,7 +901,7 @@ function upCtoTicker(id,newTicker){
   }
   const currency=getCurrencyFromTicker(t);
   if(currency===null){
-    toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF)','#7f1d1d');
+    toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
     render();return;
   }
   DATA.cto=DATA.cto.map(p=>p.id===id?{...p,ticker:t,currency,livePrice:null,priceSource:'none',priceDate:null}:p);
@@ -842,7 +917,7 @@ function upCryptoTicker(id,newTicker){
   }
   const result=parseCryptoTicker(t);
   if(!result){
-    toast('❌ Crypto ticker rejected. Expected format: id:currency (e.g. bitcoin:usd). Accepted currencies: eur, usd, chf.','#7f1d1d');
+    toast('❌ Crypto ticker rejected. Expected format: id:currency (e.g. bitcoin:usd). Accepted currencies: eur, usd, chf, gbp, jpy, hkd, cny.','#7f1d1d');
     render();return;
   }
   DATA.crypto=DATA.crypto.map(p=>p.id===id?{...p,ticker:t,currency:result.currency,livePrice:null,priceSource:'none',priceDate:null}:p);
@@ -935,9 +1010,9 @@ function upTradeTicker(key,id,newTicker){
   }
   if(currency==null){
     if(isCto){
-      toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF)','#7f1d1d');
+      toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
     }else{
-      toast('❌ Crypto ticker rejected. Expected format: id:currency (e.g. bitcoin:usd). Accepted currencies: eur, usd, chf.','#7f1d1d');
+      toast('❌ Crypto ticker rejected. Expected format: id:currency (e.g. bitcoin:usd). Accepted currencies: eur, usd, chf, gbp, jpy, hkd, cny.','#7f1d1d');
     }
     render();return;
   }

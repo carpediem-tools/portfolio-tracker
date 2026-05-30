@@ -102,7 +102,8 @@ def fetch_coingecko(ids, currency='eur'):
 
 def fetch_fx_rates():
     """Récupère les taux de change du jour via Yahoo Finance."""
-    pairs = {'eurusd': 'EURUSD=X', 'eurchf': 'EURCHF=X', 'usdchf': 'USDCHF=X'}
+    pairs = {'eurusd': 'EURUSD=X', 'eurchf': 'EURCHF=X', 'usdchf': 'USDCHF=X',
+             'eurgbp': 'EURGBP=X', 'eurjpy': 'EURJPY=X', 'eurhkd': 'EURHKD=X', 'eurcny': 'EURCNY=X'}
     result = {}
     try:
         import yfinance as yf
@@ -185,7 +186,7 @@ def parse_crypto_ticker(t):
     if len(parts) != 2:
         return None, None
     cid, cur = parts[0].strip(), parts[1].strip().lower()
-    if not cid or cur not in ("eur", "usd", "chf"):
+    if not cid or cur not in ("eur", "usd", "chf", "gbp", "jpy", "hkd", "cny"):
         return None, None
     return cid, cur
 
@@ -196,6 +197,10 @@ def get_currency_from_ticker_cto(ticker):
     Miroir Python de getCurrencyFromTicker() (JS).
     Suffixes EUR : .PA .AS .DE .F .MI .BR .LS .MC
     Suffixes CHF : .SW .VX
+    Suffixes GBP : .L
+    Suffixes JPY : .T
+    Suffixes HKD : .HK
+    Suffixes CNY : .SS .SZ
     Sans suffixe (pas de point) → 'usd'
     Suffixe inconnu → None
     """
@@ -210,10 +215,22 @@ def get_currency_from_ticker_cto(ticker):
     suffix = t[dot + 1:].upper()
     EUR_SUFFIXES = {"PA", "AS", "DE", "F", "MI", "BR", "LS", "MC"}
     CHF_SUFFIXES = {"SW", "VX"}
+    GBP_SUFFIXES = {"L"}
+    JPY_SUFFIXES = {"T"}
+    HKD_SUFFIXES = {"HK"}
+    CNY_SUFFIXES = {"SS", "SZ"}
     if suffix in EUR_SUFFIXES:
         return "eur"
     if suffix in CHF_SUFFIXES:
         return "chf"
+    if suffix in GBP_SUFFIXES:
+        return "gbp"
+    if suffix in JPY_SUFFIXES:
+        return "jpy"
+    if suffix in HKD_SUFFIXES:
+        return "hkd"
+    if suffix in CNY_SUFFIXES:
+        return "cny"
     return None
 
 
@@ -410,12 +427,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if t == 'eur':
                 if f == 'usd': return amount / fx['eurusd'] if fx.get('eurusd') else None
                 if f == 'chf': return amount / fx['eurchf'] if fx.get('eurchf') else None
+                if f == 'gbp': return amount / fx['eurgbp'] if fx.get('eurgbp') else None
+                if f == 'jpy': return amount / fx['eurjpy'] if fx.get('eurjpy') else None
+                if f == 'hkd': return amount / fx['eurhkd'] if fx.get('eurhkd') else None
+                if f == 'cny': return amount / fx['eurcny'] if fx.get('eurcny') else None
             if t == 'usd':
                 if f == 'eur': return amount * fx['eurusd'] if fx.get('eurusd') else None
                 if f == 'chf': return amount / fx['usdchf'] if fx.get('usdchf') else None
+                if f == 'gbp': return amount / fx['eurgbp'] * fx['eurusd'] if (fx.get('eurgbp') and fx.get('eurusd')) else None
+                if f == 'jpy': return amount / fx['eurjpy'] * fx['eurusd'] if (fx.get('eurjpy') and fx.get('eurusd')) else None
+                if f == 'hkd': return amount / fx['eurhkd'] * fx['eurusd'] if (fx.get('eurhkd') and fx.get('eurusd')) else None
+                if f == 'cny': return amount / fx['eurcny'] * fx['eurusd'] if (fx.get('eurcny') and fx.get('eurusd')) else None
             if t == 'chf':
                 if f == 'eur': return amount * fx['eurchf'] if fx.get('eurchf') else None
                 if f == 'usd': return amount * fx['usdchf'] if fx.get('usdchf') else None
+                if f == 'gbp': return amount / fx['eurgbp'] * fx['eurchf'] if (fx.get('eurgbp') and fx.get('eurchf')) else None
+                if f == 'jpy': return amount / fx['eurjpy'] * fx['eurchf'] if (fx.get('eurjpy') and fx.get('eurchf')) else None
+                if f == 'hkd': return amount / fx['eurhkd'] * fx['eurchf'] if (fx.get('eurhkd') and fx.get('eurchf')) else None
+                if f == 'cny': return amount / fx['eurcny'] * fx['eurchf'] if (fx.get('eurcny') and fx.get('eurchf')) else None
             return None
 
         def build_live_rows(positions, id_fields, headers):
@@ -588,5 +617,5 @@ if __name__ == "__main__":
         server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋 Arrêt.")
+        print("\n👋 Stopped.")
         server.server_close()

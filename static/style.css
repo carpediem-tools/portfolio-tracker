@@ -52,3 +52,4 @@ tr:hover td{background:#1a1f35}
 .resp-tbl{table-layout:fixed;min-width:720px}
 .resp-tbl td,.resp-tbl th{overflow:hidden}
 .resp-tbl td input,.resp-tbl td select{width:100%;min-width:0}
+.btn-col{width:40px;text-align:center;padding:2px 4px}

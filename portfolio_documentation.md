@@ -36,7 +36,7 @@ The tracker runs entirely locally, with no cloud or mandatory external dependenc
 | Data | `portfolio_data.json` — same folder as the script |
 | Stock prices | Yahoo Finance via `yfinance` (pip) or direct HTTP fallback |
 | Crypto prices | CoinGecko public API, no key required |
-| Daily FX rates | Yahoo Finance (`EURUSD=X`, `EURCHF=X`, `USDCHF=X`) — Dashboard consolidations |
+| Daily FX rates | Yahoo Finance — EUR-based pairs for all supported currencies (EUR, USD, CHF, GBP, JPY, HKD, CNY) — Dashboard consolidations |
 | Historical FX rates | Frankfurter API (ECB) — realized P&L in Sales screens |
 | Frontend | HTML/CSS/JS vanilla, embedded in the Python script |
 
@@ -225,7 +225,7 @@ This data feeds the line chart and annual snapshot table in the Dashboard.
 ## 7. Options tab
 
 ### Reporting currency
-Select EUR, USD or CHF then click **💾 Save** to apply.
+Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click **💾 Save** to apply.
 
 **Exact scope of the currency change:**
 
@@ -265,7 +265,9 @@ This is the most important concept to understand when using the tracker.
 
 ### Core principle
 
-Three currencies are supported: **EUR, USD, CHF**. No others.
+Seven currencies are supported: **EUR, USD, CHF, GBP (£), JPY (¥), HKD (HK$) and CNY (CN¥)**.
+
+> **Note on JPY:** Japanese yen amounts are displayed without decimal places (e.g. ¥7,203, not ¥7,203.00), consistent with standard JPY notation.
 
 | Amount type | Currency | Conversion |
 |---|---|---|
@@ -309,6 +311,10 @@ The tracker uses **two distinct FX rate sources** depending on the use case:
 - `EURUSD=X` : EUR/USD rate
 - `EURCHF=X` : EUR/CHF rate
 - `USDCHF=X` : USD/CHF rate
+- `EURGBP=X` : EUR/GBP rate
+- `EURJPY=X` : EUR/JPY rate
+- `EURHKD=X` : EUR/HKD rate
+- `EURCNY=X` : EUR/CNY rate
 
 Stored in `portfolio_data.json` under the `fxRates` key, used for Dashboard consolidations and CTO/Crypto top banners.
 
@@ -335,9 +341,11 @@ The currency is inferred from the suffix:
 | (no suffix) | USD | `AAPL`, `MSFT`, `NVDA`, `BNPQY` |
 | `.PA` `.AS` `.DE` `.F` `.MI` `.BR` `.LS` `.MC` | EUR | `CW8.PA`, `ASML.AS`, `SAP.DE`, `ENEL.MI` |
 | `.SW` `.VX` | CHF | `NESN.SW`, `ROG.VX` |
-| Any other suffix | **Rejected at entry** | `AAPL.HK`, `XYZ.JP`, etc. |
-
-> Suffixes such as `.HK` (Hong Kong), `.T` (Tokyo), and other unlisted markets are **intentionally rejected** as they correspond to out-of-scope currencies (HKD, JPY, etc.). The tracker only supports EUR / USD / CHF.
+| `.L` | GBP | `SHEL.L`, `AZN.L` |
+| `.T` | JPY | `7203.T`, `6758.T` |
+| `.HK` | HKD | `0700.HK`, `9988.HK` |
+| `.SS` `.SZ` | CNY | `600519.SS`, `000858.SZ` |
+| Any other suffix | **Rejected at entry** | `AAPL.XX`, `XYZ.JP`, etc. |
 
 <a id="ticker-crypto"></a>
 
@@ -349,10 +357,10 @@ Format: **`id:currency`** (e.g. `bitcoin:usd`, `ethereum:eur`, `solana:chf`).
 |---|---|
 | `id` (before the `:`) | CoinGecko identifier, lowercase. Must not be empty. |
 | `:` | Required separator. Must appear exactly once in the ticker (e.g. bitcoin:usd — one colon, no more). |
-| `currency` (after the `:`) | `eur`, `usd` or `chf`. Case-insensitive at entry (normalized to lowercase). |
+| `currency` (after the `:`) | `eur`, `usd`, `chf`, `gbp`, `jpy`, `hkd` or `cny`. Case-insensitive at entry (normalized to lowercase). JPY amounts are displayed without decimal places. |
 
 > **Important:** the `id` is the CoinGecko identifier, **not the symbol**:
-> - ✅ `bitcoin:usd`, `ethereum:eur`, `solana:usd`, `cardano:chf`
+> - ✅ `bitcoin:usd`, `ethereum:eur`, `solana:chf`, `cardano:gbp`, `bitcoin:jpy`, `ethereum:hkd`, `solana:cny`
 > - ❌ `BTC:USD`, `ETH:EUR`, `SOL:USD` (symbols are not recognized by the CoinGecko API)
 
 **Where to find the CoinGecko `id`?**
@@ -400,8 +408,13 @@ Tickers follow Yahoo Finance naming conventions. The suffix determines the excha
 | `.LS` | Euronext Lisbon | EUR |
 | `.MC` | Bolsa de Madrid | EUR |
 | `.SW` or `.VX` | SIX Swiss Exchange | CHF |
+| `.L` | London Stock Exchange | GBP |
+| `.T` | Tokyo Stock Exchange | JPY |
+| `.HK` | Hong Kong Stock Exchange | HKD |
+| `.SS` | Shanghai Stock Exchange | CNY |
+| `.SZ` | Shenzhen Stock Exchange | CNY |
 
-Examples: `AAPL` (Apple, USD), `CW8.PA` (MSCI World ETF, EUR), `NESN.SW` (Nestlé, CHF)
+Examples: `AAPL` (Apple, USD), `CW8.PA` (MSCI World ETF, EUR), `NESN.SW` (Nestlé, CHF), `SHEL.L` (Shell, GBP), `7203.T` (Toyota, JPY), `0700.HK` (Tencent, HKD), `600519.SS` (Moutai, CNY)
 
 The native currency is automatically inferred from the suffix when the ticker is entered. Tickers with unrecognized suffixes are rejected — the tracker displays an error and reverts to the previous value (see [section 9](#9-ticker-formats) for the full list and validation rules).
 
@@ -448,7 +461,7 @@ Each sale stores two independent rates:
 | Data | Official European Central Bank (ECB) rates |
 | Coverage | From January 4, 1999 (first business day post-euro) |
 | Updated | Once per business day, around 4:00 PM CET |
-| Currencies | EUR, USD, CHF (the three supported currencies) |
+| Currencies | EUR, USD, CHF, GBP, JPY, HKD, CNY (all supported currencies) |
 
 API response format (example USD → EUR on 2024-01-15):
 ```json
@@ -650,7 +663,7 @@ Realized return as a percentage. This ratio is calculated in the native currency
 
 ### 12.3 Currency conversion
 
-The `convert(amount, fromCur, toCur)` function converts amounts between EUR, USD and CHF using the rates stored in `fxRates`. Conversions use direct Yahoo Finance rates (`EURUSD=X`, `EURCHF=X`, `USDCHF=X`); there is no indirect triangulation.
+The `convert(amount, fromCur, toCur)` function converts amounts between EUR, USD, CHF, GBP, JPY, HKD and CNY using the rates stored in `fxRates`. EUR ↔ USD and EUR ↔ CHF use direct Yahoo Finance rates (`EURUSD=X`, `EURCHF=X`, `USDCHF=X`). Conversions involving GBP, JPY, HKD or CNY use EUR-based rates (`EURGBP=X`, `EURJPY=X`, `EURHKD=X`, `EURCNY=X`); cross-currency conversions not involving EUR (e.g. GBP → USD) triangulate through EUR.
 
 | From → To | Formula |
 |---|---|
@@ -660,6 +673,8 @@ The `convert(amount, fromCur, toCur)` function converts amounts between EUR, USD
 | USD → CHF | `amount × usdchf` |
 | CHF → EUR | `amount / eurchf` |
 | CHF → USD | `amount / usdchf` |
+
+GBP, JPY, HKD and CNY conversions all triangulate through EUR. For example: GBP → USD = `amount / eurgbp × eurusd`; JPY → CHF = `amount / eurjpy × eurchf`.
 
 If source and destination currencies are the same, the amount is returned unchanged. If the required rate is not available in `fxRates` (never synced), the conversion returns `null` and the value is treated as unavailable in downstream calculations.
 
@@ -846,7 +861,7 @@ Every change made in the interface is **saved immediately** to this file. There 
     }
   ],
   "ctoDivs": [],
-  "fxRates": { "eurusd": 1.08, "eurchf": 0.96, "usdchf": 0.89 }
+  "fxRates": { "eurusd": 1.08, "eurchf": 0.96, "usdchf": 0.89, "eurgbp": 0.85, "eurjpy": 163.2, "eurhkd": 8.41, "eurcny": 7.78 }
 }
 ```
 
@@ -1028,15 +1043,7 @@ Open questions before development:
 
 ### Additional currency support
 
-The tracker currently supports EUR, USD and CHF only. Extending
-support to major additional currencies is planned, including HKD,
-JPY, GBP, and others. This would require:
-- Adding the corresponding Yahoo Finance FX pairs
-  (e.g. EURHKD=X, EURJPY=X, GBPEUR=X)
-- Extending ticker suffix validation to cover additional exchanges
-  (e.g. .HK for Hong Kong, .T for Tokyo, .L for London)
-- Updating the Frankfurter integration to include the additional
-  currency pairs
+This feature is now implemented. GBP (£), JPY (¥), HKD (HK$) and CNY (CN¥) are fully supported alongside EUR, USD and CHF. See [section 8](#8-currencies--complete-guide) for the currencies guide and [section 9](#9-ticker-formats) for the complete list of accepted ticker suffixes.
 
 ---
 

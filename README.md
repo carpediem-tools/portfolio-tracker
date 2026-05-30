@@ -10,7 +10,7 @@ No cloud. No account. No data leaves the machine.
 - **Stock positions (CTO)** — open positions with purchase history,
   weighted average cost, live valuation, P&L and weight per position
 - **Crypto positions** — same logic, powered by CoinGecko
-- **Multi-currency** — EUR, USD and CHF supported; all values consolidated
+- **Multi-currency** — EUR, USD, CHF, GBP, JPY, HKD and CNY supported; all values consolidated
   into a chosen reporting currency
 - **Live price sync** — stocks via Yahoo Finance, crypto via CoinGecko,
   FX rates via Yahoo Finance — all free, no API key required
