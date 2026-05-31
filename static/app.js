@@ -368,10 +368,15 @@ function makePie(items,vk,lk,title){
 }
 
 // Line chart
+function convertHistoRow(h,amount){
+  if(h.fxRate==null||h.fxRateSource==='ko')return null;
+  return amount*h.fxRate;
+}
+
 function lineChart(hist){
   const displayCur=getCur().code;
-  const curSym={eur:'€',usd:'$',chf:'CHF'}[displayCur]||'€';
-  const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convert(h.total,h.currency||'eur',displayCur)})).filter(h=>h.total!=null&&h.total>0);
+  const curSym={eur:'€',usd:'$',chf:'CHF',gbp:'£',jpy:'¥',hkd:'HK$',cny:'CN¥'}[displayCur]||'€';
+  const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convertHistoRow(h,h.total)})).filter(h=>h.total!=null&&h.total>0);
   if(pts.length<2) return '<p style="color:var(--text2);font-size:12px;padding:8px 0">At least 2 years of data required.</p>';
   const W=Math.max(500,pts.length*80),H=175,PL=60,PR=20,PT=22,PB=30;
   const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
@@ -613,12 +618,11 @@ function renderDash(){
   const bPie=Object.entries(bmap).map(([name,valo])=>({name,valo}));
   const sorted=[...DATA.historique].sort((a,b)=>a.year-b.year);
   const hRows=sorted.map((h,i)=>{
-    const fromCur=h.currency||'eur';
-    const cSec=convert(h.securities||0,fromCur,displayCur);
-    const cCrypto=convert(h.crypto||0,fromCur,displayCur);
-    const cTotal=convert(h.total||0,fromCur,displayCur);
+    const cSec=convertHistoRow(h,h.securities||0);
+    const cCrypto=convertHistoRow(h,h.crypto||0);
+    const cTotal=convertHistoRow(h,h.total||0);
     const prevH=i>0?sorted[i-1]:null;
-    const prevTotal=prevH?convert(prevH.total||0,prevH.currency||'eur',displayCur):null;
+    const prevTotal=prevH?convertHistoRow(prevH,prevH.total||0):null;
     const v=(cTotal!=null&&prevTotal!=null&&prevTotal!==0)?(cTotal-prevTotal)/prevTotal:null;
     return`<tr>
       <td class="mono">${h.year}</td>
