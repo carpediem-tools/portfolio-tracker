@@ -9,9 +9,9 @@
 
 1. [General architecture](#1-general-architecture)
 2. [Dashboard tab](#2-dashboard-tab)
-3. [CTO tab](#3-cto-tab)
+3. [Securities tab](#3-cto-tab)
 4. [Cryptos tab](#4-cryptos-tab)
-5. [CTO Sales / Crypto Sales tabs](#5-sales-tabs)
+5. [Securities Sales / Crypto Sales tabs](#5-sales-tabs)
 6. [History tab](#6-history-tab)
 7. [Options tab](#7-options-tab)
 8. [Currencies — complete guide](#8-currencies--complete-guide)
@@ -64,14 +64,14 @@ Four breakdown charts, all expressed in the **Options currency** (converted at t
 ### Annual trend chart
 Change in total valuation year over year, fed by data entered in the History tab.
 
-Each history row has its own entry currency. The chart converts each value to the Options currency at today's rate. Years with missing FX data are dropped from the chart. The axis and label symbol dynamically follows the Options currency.
+Each history row has its own entry currency. The chart converts each value to the Options currency at today's rate. Years with missing FX data (daily rates stored in `fxRates`, fetched via the 🔄 Sync button) are dropped from the chart. The axis and label symbol dynamically follows the Options currency.
 
 ### Annual snapshot table
 Below the chart, a table summarizes year by year the totals, share by asset class, crypto share, and the change (`%` vs. the previous year). All values are converted to the Options currency. Cells showing `—` indicate that an FX conversion was missing for that row.
 
 ---
 
-## 3. CTO tab
+## 3. Securities tab
 
 Open positions in an ordinary securities account.
 
@@ -96,7 +96,7 @@ Open positions in an ordinary securities account.
 
 ### Ticker entry
 
-The currency field is no longer editable. Each time the ticker is modified, the currency is automatically recalculated from the Yahoo Finance suffix (see [section 9](#9-ticker-formats)).
+The currency field is read-only. Each time the ticker is modified, the currency is automatically recalculated from the Yahoo Finance suffix (see [section 9](#9-ticker-formats)).
 
 If a ticker with an unrecognized suffix is entered, the change is **rejected**: an error message at the bottom of the screen lists the accepted suffixes and the previous value is restored.
 
@@ -125,9 +125,9 @@ The **Total** row shows the overall quantity, cumulative fees, total invested, a
 
 ## 4. Cryptos tab
 
-Works like the CTO tab with the following differences:
+Works like the Securities tab with the following differences:
 
-| Field | CTO | Crypto |
+| Field | Securities | Crypto |
 |---|---|---|
 | Identifier | Yahoo Ticker (`CW8.PA`) | Composite ticker (`bitcoin:usd`) |
 | ISIN | Yes | No |
@@ -145,7 +145,7 @@ As with CTO, changing the ticker invalidates the live price (sync required).
 
 <a id="5-sales-tabs"></a>
 
-## 5. CTO Sales / Crypto Sales tabs
+## 5. Securities Sales / Crypto Sales tabs
 
 Record of completed disposals (partial or full sales).
 
@@ -175,7 +175,7 @@ Each row represents **a symmetric disposal**: same quantity for both the buy and
 ### Ticker validation
 
 Same rules as the live screens:
-- **CTO Sales**: Yahoo Finance suffix (see [section 9](#9-ticker-formats))
+- **Securities Sales**: Yahoo Finance suffix (see [section 9](#9-ticker-formats))
 - **Crypto Sales**: `id:currency` format
 - An invalid ticker is rejected with an error toast, the previous value is restored.
 
@@ -202,19 +202,30 @@ Each FX cell has an ✏️ button: clicking it opens an input box to enter the r
 
 Manual entry of portfolio valuations as of December 31 each year.
 
-| Field | Content |
+### Columns
+
+| Column | Content |
 |---|---|
-| Year | Fiscal year |
-| **Currency** | **Row entry currency** (EUR / USD / CHF) |
-| Total | Total valuation as of 31/12 |
-| (configurable asset classes) | Share by asset class |
-| Crypto | Crypto share |
+| **Year** | Fiscal year — sortable via ↑/↓ button in the column header |
+| **Currency** | Row entry currency (EUR, USD, CHF, GBP, JPY, HKD, CNY) |
+| **Securities** | Securities total as of Dec 31 — **fixed column**, cannot be removed |
+| **Cryptos** | Crypto total as of Dec 31 — **fixed column**, cannot be removed |
+| **Total** | Total portfolio valuation as of Dec 31 |
+| **FX** | Frankfurter rate (native → Options currency) at Dec 31 of the row's year — status indicator ⚪🟢🟡🔴 and ✏️ manual edit button |
+
+### FX column
+
+The **🔄 Sync FX rates** button in the toolbar fetches or refreshes the Dec 31 rate from Frankfurter for all ⚪ or 🔴 rows. This rate is used by the Dashboard to convert each year's total to the Options currency.
+
+> **Current year:** if December 31 of the current year has not yet passed, the Frankfurter API cannot return a rate for that date. A ⚠️ `Dec 31 not yet available — using today's rate` notice is shown for that row.
+
+Status indicators and the ✏️ manual entry button follow the same logic as the Sales screens (see [section 11](#11-historical-fx-rates-frankfurter)).
+
+### Entry
 
 When a row is created, the default currency is the current Options currency. It can be changed row by row.
 
-Values are entered in **each row's own currency**. When displayed on the Dashboard, each value is converted to the Options currency at today's rate, exactly like live positions.
-
-> **The number and names of asset classes depend on the Options settings.** Adding a class makes it appear in all existing history rows (defaulting to 0).
+Values are entered in **each row's own currency**. When displayed on the Dashboard, each value is converted to the Options currency using the row's FX rate (or today's rate if none is stored).
 
 This data feeds the line chart and annual snapshot table in the Dashboard.
 
@@ -234,7 +245,7 @@ Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click **💾 Save** to apply.
 | Dashboard — Total valuation | **Options currency** (consolidation) |
 | Dashboard — Pie charts | **Options currency** (converted at today's rate) |
 | Dashboard — Annual trend chart + snapshot table | **Options currency** (converted from each history row's currency) |
-| CTO tab — Top banner (total CTO valuation) | **Options currency** |
+| Securities tab — Top banner (total Securities valuation) | **Options currency** |
 | Cryptos tab — Top banner (total Crypto valuation) | **Options currency** |
 | Individual CTO and Crypto rows | Native currency (never converted) |
 | Sales tabs — P&L KPIs | **Options currency** (via fixed FX rates — see [section 11](#11-historical-fx-rates-frankfurter)) |
@@ -242,7 +253,7 @@ Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click **💾 Save** to apply.
 | Individual Sales rows — Unit price / Avg cost / Fees | Native currency of the sale |
 | History entry | Independent (each row has its own currency) |
 
-**Changing the Options currency** updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the **fixed FX rates** for all sales (CTO Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see [section 11](#11-historical-fx-rates-frankfurter)). 🟡 (manual) rates are preserved. Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.
+**Changing the Options currency** updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the **fixed FX rates** for all sales (Securities Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see [section 11](#11-historical-fx-rates-frankfurter)). 🟡 (manual) rates are preserved. Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.
 
 ### Brokers and asset classes
 Configurable lists. Brokers and asset classes can be added, renamed, and deleted. A deletion first checks that no position (CTO or history row) references the item; otherwise it is blocked with an explicit message.
@@ -288,7 +299,7 @@ This is the guiding principle:
 
 - For **CTO** positions, the currency is determined by the **Yahoo Finance ticker suffix**.
 - For **Crypto** positions, the currency is the part after `:` in the composite ticker.
-- No Currency field is editable in the CTO, Crypto, CTO Sales, or Crypto Sales screens. All display the currency as read-only, calculated from the ticker.
+- No Currency field is editable in the Securities, Crypto, Securities Sales, or Crypto Sales screens. All display the currency as read-only, calculated from the ticker.
 
 See [section 9](#9-ticker-formats) for details on accepted formats.
 
@@ -443,7 +454,11 @@ A 🟡 price is still used in calculations (P&L, valuation) but may no longer re
 
 ### Overview
 
-The CTO Sales and Crypto Sales screens display realized P&L in the Options currency (configured in ⚙️ Options). To convert native amounts (USD, CHF, EUR) to this currency, the tracker uses **FX rates fixed at each transaction date** (buy and sell), not the current rate.
+The Frankfurter API is used in two contexts:
+1. **Securities Sales and Crypto Sales** — FX rates fixed at each transaction date (buy and sell), to calculate realized P&L in the Options currency.
+2. **History tab** — FX rate at December 31 of each row's year, to convert annual totals to the Options currency in the Dashboard (see [section 6](#6-history-tab)).
+
+For Sales: the tracker uses **FX rates fixed at each transaction date** (buy and sell), not the current rate, to display realized P&L in the Options currency (configured in ⚙️ Options).
 
 This matches standard broker behavior (Swissquote, etc.): realized P&L in account currency is calculated at the rate in effect on each transaction date, not the current rate.
 
@@ -599,7 +614,7 @@ Percentage change relative to the total invested.
 
 *Example: `evol = 315 / 2,310 ≈ 13.6%`.*
 
-### 12.2 Sale calculations (CTO Sales and Crypto Sales)
+### 12.2 Sale calculations (Securities Sales and Crypto Sales)
 
 From a sale row containing `qSold`, `priceSell`, `feesSell`, `priceBuy`, `feesBuy`, `fxRateSell` and `fxRateBuy`, the following values are computed:
 
@@ -725,7 +740,7 @@ Pour chaque année h ∈ historique :
   point.y = convert(h.total, h.currency, deviseOptions)
 ```
 
-Each history row is converted from its own currency to the Options currency. Years for which the conversion returns `null` (missing FX) are excluded from the chart.
+Each history row is converted from its own currency to the Options currency. Each row stores an optional `fxRate` field (Frankfurter rate at Dec 31 of the row's year) and `fxRateSource` (same state values as Sales rates: `null`, `"ok"`, `"manual"`, `"ko"`, `"auto"`). When present and valid, this fixed rate is used instead of today's live rate. Years for which the conversion returns `null` (missing FX) are excluded from the chart.
 
 The annual change in the table below the chart is calculated **after conversion**, i.e. in the Options currency:
 
@@ -857,7 +872,9 @@ Every change made in the interface is **saved immediately** to this file. There 
       "currency": "eur",
       "total": 100000,
       "crypto": 20000,
-      "classes": { "Stocks": 50000, "Metals": 10000, "Real estate": 20000 }
+      "classes": { "Stocks": 50000, "Metals": 10000, "Real estate": 20000 },
+      "fxRate": 1.047,
+      "fxRateSource": "ok"
     }
   ],
   "ctoDivs": [],
@@ -1040,10 +1057,6 @@ Open questions before development:
 - Impact on overall P&L calculation (total return = capital gain + dividends)?
 - Display in the Dashboard (dedicated KPI? integrated into P&L?)
 - Should crypto staking income (validation rewards, DeFi interest) have a separate tab? The tax and accounting nature of staking differs from stock dividends — same tab or two separate tabs?
-
-### Additional currency support
-
-This feature is now implemented. GBP (£), JPY (¥), HKD (HK$) and CNY (CN¥) are fully supported alongside EUR, USD and CHF. See [section 8](#8-currencies--complete-guide) for the currencies guide and [section 9](#9-ticker-formats) for the complete list of accepted ticker suffixes.
 
 ---
 
