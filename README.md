@@ -41,6 +41,19 @@ are made:
 - CoinGecko — live crypto prices
 - Frankfurter (ECB) — historical FX rates for realized P&L (transaction
   date) and annual History snapshots (Dec 31)
+---
+
+## Screenshots
+
+![Dashboard](assets/dashboard.png)
+
+![Securities](assets/securities.png)
+
+![Sales](assets/sales.png)
+
+![History](assets/history.png)
+
+![Options](assets/options.png)
 
 ## Requirements
 
