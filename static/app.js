@@ -12,11 +12,12 @@ function invalidateFxSource(obj, sourceField, value='ko'){
 let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorMsg=null;
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
+let histoSortAsc=true;
 const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
   {id:'dashboard',label:'📊 Dashboard'},
-  {id:'cto',label:'💼 CTO'},
-  {id:'ctoES',label:'📋 CTO Sales'},
+  {id:'cto',label:'💼 Securities'},
+  {id:'ctoES',label:'📋 Securities Sales'},
   {id:'crypto',label:'🪙 Cryptos'},
   {id:'cryptoES',label:'📋 Crypto Sales'},
   {id:'historique',label:'📅 History'},
@@ -42,6 +43,8 @@ async function loadData(){
       delete h.actions;delete h.metaux;delete h.immo;
       migrated=true;
     }
+    if(h.securities===undefined){h.securities=Object.values(h.classes||{}).reduce((s,v)=>s+(v||0),0);migrated=true;}
+    if(!('fxRate' in h)){h.fxRate=null;h.fxRateSource=null;migrated=true;}
   });
   if(migrated)await saveData();
   render();
@@ -62,7 +65,7 @@ function hasSyncTargets(scope){
 }
 async function syncScope(scope){
   if(!hasSyncTargets(scope)){toast('⚠️ No price to sync','#7f1d1d');return;}
-  const lbl={all:'all prices',cto:'CTO prices',crypto:'Crypto prices'};
+  const lbl={all:'all prices',cto:'Securities prices',crypto:'Crypto prices'};
   toast('⏳ Sync '+lbl[scope]+'…','#1d4ed8');
   try{
     const r=await fetch('/api/sync'+(scope==='all'?'':'/'+scope));
@@ -78,6 +81,12 @@ async function syncScope(scope){
     toast((ok?'✅ ':'⚠ ')+parts.join(' | '),ok?'#166534':'#7f1d1d');
     render();
   }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
+}
+async function syncAll(){
+  await syncScope('all');
+  await syncHistoFx();
+  if((DATA.ctoTrades||[]).length) await syncFx('ctoTrades');
+  if((DATA.cryptoTrades||[]).length) await syncFx('cryptoTrades');
 }
 function toast(msg,bg){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
@@ -319,10 +328,10 @@ function makePie(items,vk,lk,title){
 }
 
 // Line chart
-function lineChart(){
+function lineChart(hist){
   const displayCur=getCur().code;
   const curSym={eur:'€',usd:'$',chf:'CHF'}[displayCur]||'€';
-  const pts=DATA.historique.map(h=>({year:h.year,total:convert(h.total,h.currency||'eur',displayCur)})).filter(h=>h.total!=null&&h.total>0);
+  const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convert(h.total,h.currency||'eur',displayCur)})).filter(h=>h.total!=null&&h.total>0);
   if(pts.length<2) return '<p style="color:var(--text2);font-size:12px;padding:8px 0">At least 2 years of data required.</p>';
   const W=Math.max(500,pts.length*80),H=175,PL=60,PR=20,PT=22,PB=30;
   const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
@@ -376,7 +385,7 @@ function renderOptions(){
     </div>
     <div style="margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <label style="font-size:12px;color:var(--text2);font-weight:600">Brokers</label>
+        <label style="font-size:12px;color:var(--text2);font-weight:600">Securities / Brokers</label>
         ${brokers.length<10?`<button class="btn btn-ghost btn-sm" onclick="optToggleNewBroker()">+</button>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -395,7 +404,7 @@ function renderOptions(){
     </div>
     <div style="margin-bottom:20px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <label style="font-size:12px;color:var(--text2);font-weight:600">Asset classes</label>
+        <label style="font-size:12px;color:var(--text2);font-weight:600">Securities / Asset classes</label>
         ${classes.length<10?`<button class="btn btn-ghost btn-sm" onclick="optToggleNewClass()">+</button>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -454,7 +463,7 @@ function optDeleteBrokerImm(i){
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.broker===val);
   if(used.length>0){
-    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in CTO. Continue?'))return;
+    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?'))return;
     DATA.cto=DATA.cto.map(p=>p.broker===val?{...p,broker:''}:p);
   }
   DATA.settings.brokers=DATA.settings.brokers.filter((_,j)=>j!==i);
@@ -477,7 +486,7 @@ function optDeleteClassImm(i){
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.classe===val);
   if(used.length>0){
-    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in CTO. Continue?'))return;
+    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?'))return;
     DATA.cto=DATA.cto.map(p=>p.classe===val?{...p,classe:''}:p);
   }
   DATA.settings.classes=DATA.settings.classes.filter((_,j)=>j!==i);
@@ -508,6 +517,7 @@ function saveOptions(){
         return u;
       });
     }
+    DATA.historique=(DATA.historique||[]).map(h=>{const u={...h};invalidateFxSource(u,'fxRateSource');return u;});
     toast('⚠️ Display currency changed — FX rates for exits invalidated. Please re-sync.','#92400e');
   }
   saveData();render();
@@ -561,15 +571,20 @@ function renderDash(){
     if(v!=null)bmap[b]=(bmap[b]||0)+v;
   });
   const bPie=Object.entries(bmap).map(([name,valo])=>({name,valo}));
-  const hRows=DATA.historique.map((h,i)=>{
+  const sorted=[...DATA.historique].sort((a,b)=>a.year-b.year);
+  const hRows=sorted.map((h,i)=>{
     const fromCur=h.currency||'eur';
-    const cTotal=convert(h.total,fromCur,displayCur);
-    const prevH=i>0?DATA.historique[i-1]:null;
-    const prevTotal=prevH?convert(prevH.total,prevH.currency||'eur',displayCur):null;
+    const cSec=convert(h.securities||0,fromCur,displayCur);
+    const cCrypto=convert(h.crypto||0,fromCur,displayCur);
+    const cTotal=convert(h.total||0,fromCur,displayCur);
+    const prevH=i>0?sorted[i-1]:null;
+    const prevTotal=prevH?convert(prevH.total||0,prevH.currency||'eur',displayCur):null;
     const v=(cTotal!=null&&prevTotal!=null&&prevTotal!==0)?(cTotal-prevTotal)/prevTotal:null;
-    return`<tr><td class="mono">${h.year}</td><td class="r mono">${cTotal!=null?fmt(cTotal):'—'}</td>
-      ${(DATA.settings.classes||[]).map(c=>{const cv=convert((h.classes||{})[c]||0,fromCur,displayCur);return`<td class="r mono">${cv!=null?fmt(cv):'—'}</td>`;}).join('')}
-      <td class="r mono">${(()=>{const cv=convert(h.crypto||0,fromCur,displayCur);return cv!=null?fmt(cv):'—';})()}</td>
+    return`<tr>
+      <td class="mono">${h.year}</td>
+      <td class="r mono">${cSec!=null?fmt(cSec):'—'}</td>
+      <td class="r mono">${cCrypto!=null?fmt(cCrypto):'—'}</td>
+      <td class="r mono">${cTotal!=null?fmt(cTotal):'—'}</td>
       <td class="r mono ${v!=null?gpC(v):''}">${v!=null?fmtP(v):'—'}</td></tr>`;
   }).join('');
   return`<div class="kpis">
@@ -589,15 +604,15 @@ function renderDash(){
   </div>`}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     ${makePie(cls,'valo','name','By asset class')}
-    ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','CTO breakdown')}
+    ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities breakdown')}
     ${makePie(crC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Crypto breakdown')}
-    ${makePie(bPie,'valo','name','By broker (CTO)')}
+    ${makePie(bPie,'valo','name','By broker (Securities)')}
   </div>
-  <div class="card" style="margin-bottom:12px"><h3>Total valuation over time</h3>${lineChart()}</div>
+  <div class="card" style="margin-bottom:12px"><h3>Total valuation over time</h3>${lineChart(sorted)}</div>
   <div class="card"><h3>Annual snapshot (Dec 31)</h3>
-    <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl" style="min-width:400px">${makeColgroup([6,12,...(DATA.settings.classes||[]).map(()=>10),10,8])}<thead><tr><th>Year</th><th class="r">Total</th>
-      ${(DATA.settings.classes||[]).map(c=>`<th class="r">${c}</th>`).join('')}
-      <th class="r">Crypto</th><th class="r">Chg.</th></tr></thead>
+    <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl" style="min-width:400px">${makeColgroup([6,12,12,12,8])}<thead><tr>
+      <th>Year</th><th class="r">Securities</th><th class="r">Cryptos</th><th class="r">Total</th><th class="r">Chg.</th>
+    </tr></thead>
     <tbody>${hRows}</tbody></table></div>
   </div>`;
 }
@@ -689,7 +704,7 @@ function renderSpot(type){
     }
   });
   const syncBtn=isCto
-    ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync CTO prices</button>`
+    ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync Securities prices</button>`
     :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync Crypto prices</button>`;
   const hdrs=`<th></th><th>Nom</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
     ${isCto?'<th>Broker</th><th>Class</th>':''}
@@ -698,7 +713,7 @@ function renderSpot(type){
     <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
     <th class="r">P&L</th><th class="r">Weight</th><th></th>`;
   return`<div class="card">
-    <h3>${isCto?'💼 CTO — Open positions':'🪙 Cryptos — Open positions'}</h3>
+    <h3>${isCto?'💼 Securities — Open positions':'🪙 Cryptos — Open positions'}</h3>
     <div class="kpis">
       <div class="kpi">
         <div class="kpi-label">Invested (${displayCur.toUpperCase()})</div>
@@ -740,6 +755,18 @@ function fxBg(source){
   if(source==='ko')return 'error-cell';
   return '';
 }
+function histoFxIco(source){
+  if(source==='frankfurter'||source==='auto')return '🟢';
+  if(source==='manual'||source==='today')return '🟡';
+  if(source==='ko')return '🔴';
+  return '⚪';
+}
+function histoFxBg(source){
+  if(source==='frankfurter'||source==='auto')return 'today-cell';
+  if(source==='manual'||source==='today')return 'outdated-cell';
+  if(source==='ko')return 'error-cell';
+  return '';
+}
 function calcTradeOptions(t){
   const c=calcTrade(t);
   if(t.fxRateSell==null||t.fxRateBuy==null||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
@@ -761,6 +788,31 @@ async function syncFx(key){
           ok?'#166534':'#7f1d1d');
     render();
   }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
+}
+
+async function syncHistoFx(){
+  toast('⏳ Syncing History FX rates…','#1d4ed8');
+  try{
+    const r=await fetch('/api/syncfx/historique');
+    const j=await r.json();DATA=j.data;
+    const n=j.fx_ok,f=j.fx_fail;
+    const ok=n>0||f===0;
+    toast((ok?'✅ ':'⚠ ')+'History FX: '+n+' OK'+(f?' / '+f+' failed':''),ok?'#166534':'#7f1d1d');
+    render();
+  }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
+}
+function manualHistoFx(i){
+  const h=DATA.historique[i];if(!h)return;
+  const cur=h.currency?h.currency.toUpperCase():'?';
+  const optCur=getCur().code.toUpperCase();
+  const current=h.fxRate;
+  const v=prompt('Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
+    current?current.toFixed(4):'');
+  if(v===null)return;
+  const p=parseFloat(v.replace(',','.'));
+  if(isNaN(p)||p<=0){alert('Invalid rate');return;}
+  DATA.historique[i]={...h,fxRate:p,fxRateSource:'manual'};
+  saveData();render();
 }
 
 // E/S
@@ -815,7 +867,7 @@ function renderES(type){
   </tr>`}).join('');
   const colgroup=`<colgroup>${(isCto?[5,5,5,3,9,5,4,6,3,9,4,5,4,6,3,7,6,5,3,3]:[7,6,3,9,4,4,6,3,9,4,4,4,6,3,8,7,7,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
-    <h3>${isCto?'📋 CTO Sales':'📋 Crypto Sales'}</h3>
+    <h3>${isCto?'📋 Securities Sales':'📋 Crypto Sales'}</h3>
     <div class="kpis">
       <div class="kpi">
         <div class="kpi-label">Realized P&L</div>
@@ -867,27 +919,38 @@ function renderES(type){
 
 // Historique
 function renderHisto(){
-  const classes=DATA.settings.classes||[];
-  const colgroupHisto=makeColgroup([5,5,...classes.map(()=>10),10,12,4]);
-  let rows=DATA.historique.map((h,i)=>`<tr>
+  const currentYear=new Date().getFullYear();
+  const colgroupHisto=makeColgroup([5,5,14,3,10,10,10,3]);
+  const displayHist=DATA.historique.map((h,i)=>({h,i})).sort((a,b)=>histoSortAsc?a.h.year-b.h.year:b.h.year-a.h.year);
+  let rows=displayHist.map(({h,i})=>`<tr>
     <td class="mono"><input type="number" step="any" value="${h.year||''}" onchange="upHisto(${i},'year',this.value)"></td>
     <td><select onchange="upHisto(${i},'currency',this.value)">
-      ${['eur','usd','chf'].map(c=>`<option value="${c}"${(h.currency||'eur')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
+      ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(h.currency||'eur')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
     </select></td>
-    ${classes.map(c=>`<td class="r mono"><input type="number" step="any" value="${(h.classes||{})[c]||''}" onchange="upHisto(${i},'${c}',this.value)"></td>`).join('')}
+    <td class="${histoFxBg(h.fxRateSource)}" style="font-size:12px">
+      ${histoFxIco(h.fxRateSource)} ${h.fxRate!=null?h.fxRate.toFixed(4):'—'}
+      ${h.year===currentYear?`<br><span style="font-size:9px;color:#f59e0b">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
+    </td>
+    <td class="btn-col">
+      <button class="btn btn-orange btn-sm" onclick="manualHistoFx(${i})">✏️</button>
+    </td>
+    <td class="r mono"><input type="number" step="any" value="${h.securities!=null?h.securities:''}" onchange="upHisto(${i},'securities',this.value)"></td>
     <td class="r mono"><input type="number" step="any" value="${h.crypto||''}" onchange="upHisto(${i},'crypto',this.value)"></td>
-    <td class="r mono" style="color:var(--text2)">${fmtNative(Object.values(h.classes||{}).reduce((s,v)=>s+(v||0),0)+(h.crypto||0),h.currency||'eur')}</td>
+    <td class="r mono" style="color:var(--text2)">${fmtNative((h.securities||0)+(h.crypto||0),h.currency||'eur')}</td>
     <td><button class="btn btn-red btn-sm" onclick="delHisto(${i})">🗑</button></td>
   </tr>`).join('');
   return`<div class="card"><h3>📅 Annual history (Dec 31)</h3>
-    <div class="toolbar"><button class="btn btn-blue" onclick="addHisto()">+ Add year</button></div>
+    <div class="toolbar">
+      <button class="btn btn-blue" onclick="addHisto()">+ Add year</button>
+      <button class="btn" onclick="syncHistoFx()">🔄 Sync FX rates</button>
+    </div>
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroupHisto}<thead><tr>
-      <th>Year</th><th>Currency</th>
-      ${classes.map(c=>`<th class="r">${c}</th>`).join('')}
-      <th class="r">Crypto</th><th class="r">Total</th><th></th>
+      <th><button class="btn btn-ghost btn-sm" onclick="histoToggleSort()" style="padding:2px 4px">${histoSortAsc?'↑':'↓'}</button> Year</th><th>Currency</th><th>FX</th><th class="btn-col"></th>
+      <th class="r">Securities</th><th class="r">Cryptos</th><th class="r">Total</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
+function histoToggleSort(){histoSortAsc=!histoSortAsc;render();}
 
 // Actions utilisateur
 function upPos(type,id,f,v){DATA[type]=DATA[type].map(p=>p.id===id?{...p,[f]:v}:p);saveData();render();}
@@ -1037,16 +1100,16 @@ function upTradeTicker(key,id,newTicker){
 function delTrade(key,id){if(!confirm('Delete?'))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
 function addHisto(){
   const y=DATA.historique.length?Math.max(...DATA.historique.map(h=>h.year))+1:new Date().getFullYear();
-  const newH={year:y,total:0,crypto:0,classes:{},currency:getCur().code};
-  (DATA.settings.classes||[]).forEach(c=>newH.classes[c]=0);
-  DATA.historique.push(newH);saveData();render();
+  DATA.historique.push({year:y,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
+  saveData();render();
 }
 function upHisto(i,f,v){
   const h=DATA.historique[i];
-  if(f==='currency'){h.currency=v;}
-  else if(f==='year'||f==='crypto'){h[f]=f==='year'?parseInt(v)||0:parseFloat(v)||0;}
-  else{if(!h.classes)h.classes={};h.classes[f]=parseFloat(v)||0;}
-  h.total=Object.values(h.classes||{}).reduce((s,v)=>s+(v||0),0)+(h.crypto||0);
+  if(f==='currency'){h.currency=v;invalidateFxSource(h,'fxRateSource');}
+  else if(f==='year'){h.year=parseInt(v)||0;invalidateFxSource(h,'fxRateSource');}
+  else if(f==='crypto'){h.crypto=parseFloat(v)||0;}
+  else if(f==='securities'){h.securities=parseFloat(v)||0;}
+  h.total=(h.securities||0)+(h.crypto||0);
   saveData();render();
 }
 function delHisto(i){DATA.historique.splice(i,1);saveData();render();}
