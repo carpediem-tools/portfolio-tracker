@@ -698,7 +698,7 @@ function renderSpot(type){
         ${pIco(p)} ${p.livePrice?fmtNative(p.livePrice,p.currency):'—'}
       </td>
       <td class="btn-col">
-        <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualPrice('${type}',${p.id})">✏️</button>
+        <button onclick="event.stopPropagation();manualPrice('${type}',${p.id})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
       </td>
       <td style="font-size:10px;color:var(--text2)">${p.priceDate||''}</td>
       <td class="r mono">${p.livePrice?fmtNative(c.valo,p.currency):''}</td>
@@ -883,7 +883,7 @@ function renderES(type){
       ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(4):'—'}
     </td>
     <td class="btn-col">
-      <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualFx('${key}',${t.id},'buy')">✏️</button>
+      <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'buy')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
     </td>
     <!-- VENTE -->
     <td style="border-left:2px solid var(--accent)">
@@ -896,7 +896,7 @@ function renderES(type){
       ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(4):'—'}
     </td>
     <td class="btn-col">
-      <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();manualFx('${key}',${t.id},'sell')">✏️</button>
+      <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'sell')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
     </td>
     <!-- TOTAL -->
     <td class="r mono" style="border-left:2px solid var(--accent)">${fmt(o.tbOpt)}</td>
@@ -973,7 +973,7 @@ function renderHisto(){
       ${h.year===currentYear?`<br><span style="font-size:9px;color:#f59e0b">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
     </td>
     <td class="btn-col">
-      <button class="btn btn-orange btn-sm" onclick="manualHistoFx(${i})">✏️</button>
+      <button onclick="manualHistoFx(${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
     </td>
     <td class="r mono"><input type="number" step="any" value="${h.securities!=null?h.securities:''}" onchange="upHisto(${i},'securities',this.value)"></td>
     <td class="r mono"><input type="number" step="any" value="${h.crypto||''}" onchange="upHisto(${i},'crypto',this.value)"></td>
