@@ -645,8 +645,8 @@ function renderDash(){
   </div>`}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     ${makePie(cls,'valo','name','By asset class')}
-    ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities breakdown')}
-    ${makePie(crC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Crypto breakdown')}
+    ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
+    ${makePie(crC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Cryptos')}
     ${makePie(bPie,'valo','name','By broker (Securities)')}
   </div>
   <div class="card" style="margin-bottom:12px"><h3>Total valuation over time</h3>${lineChart(sorted)}</div>
