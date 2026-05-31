@@ -487,8 +487,8 @@ function renderInfo(){
     <h3>📊 Portfolio Tracker — V1.0</h3>
     <p style="color:var(--text2);margin-top:4px;margin-bottom:24px;font-size:13px">Local investment tracker</p>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>V1.0</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>May 2026</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v1.0</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/05/31</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>Carpe Diem</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
