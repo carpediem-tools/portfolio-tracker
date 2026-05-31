@@ -13,6 +13,7 @@ let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorM
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
+let dashChartFilter='10Y';
 const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
   {id:'dashboard',label:'📊 Dashboard'},
@@ -378,6 +379,7 @@ function lineChart(hist){
   const curSym={eur:'€',usd:'$',chf:'CHF',gbp:'£',jpy:'¥',hkd:'HK$',cny:'CN¥'}[displayCur]||'€';
   const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convertHistoRow(h,h.total)})).filter(h=>h.total!=null&&h.total>0);
   if(pts.length<2) return '<p style="color:var(--text2);font-size:12px;padding:8px 0">At least 2 years of data required.</p>';
+  const scroll=pts.length>15;
   const W=Math.max(500,pts.length*80),H=175,PL=60,PR=20,PT=22,PB=30;
   const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
   const vs=pts.map(p=>p.total),mn=Math.min(...vs),mx=Math.max(...vs),rng=mx-mn||1;
@@ -394,7 +396,8 @@ function lineChart(hist){
      <text x="${x.toFixed(1)}" y="${H-PB+13}" text-anchor="middle" font-size="9" fill="var(--text2)">${pts[i].year}</text>
      <text x="${x.toFixed(1)}" y="${(ys[i]-9).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--accent)" font-weight="600">${Math.round(pts[i].total).toLocaleString('en-US')} ${curSym}</text>`
   ).join('');
-  return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">
+  const svgStyle=scroll?`width:${W}px;display:block`:`width:100%;display:block`;
+  const svg=`<svg viewBox="0 0 ${W} ${H}" style="${svgStyle}">
     <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
       <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
@@ -406,7 +409,9 @@ function lineChart(hist){
     <path d="${pD}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
   </svg>`;
+  return scroll?`<div style="overflow-x:auto">${svg}</div>`:svg;
 }
+function setChartFilter(f){dashChartFilter=f;render();}
 
 // Dashboard
 function renderOptions(){
@@ -614,6 +619,9 @@ function renderDash(){
   });
   const bPie=Object.entries(bmap).map(([name,valo])=>({name,valo}));
   const sorted=[...DATA.historique].sort((a,b)=>a.year-b.year);
+  const _maxYear=sorted.length?Math.max(...sorted.map(h=>h.year)):0;
+  const _filterN=dashChartFilter==='5Y'?5:dashChartFilter==='10Y'?10:dashChartFilter==='15Y'?15:Infinity;
+  const chartData=sorted.filter(h=>h.year>_maxYear-_filterN);
   const hRows=sorted.map((h,i)=>{
     const cSec=convertHistoRow(h,h.securities||0);
     const cCrypto=convertHistoRow(h,h.crypto||0);
@@ -649,7 +657,16 @@ function renderDash(){
     ${makePie(bPie,'valo','name','Brokers')}
     ${makePie(crC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Cryptos')}
   </div>
-  <div class="card" style="margin-bottom:12px"><h3>Total valuation over time</h3>${lineChart(sorted)}</div>
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">Total valuation over time</h3>
+      <div style="display:flex;gap:4px">${['5Y','10Y','15Y','All'].map(f=>dashChartFilter===f
+        ?`<button class="btn btn-sm" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="setChartFilter('${f}')">${f}</button>`
+        :`<button class="btn btn-sm btn-ghost" onclick="setChartFilter('${f}')">${f}</button>`
+      ).join('')}</div>
+    </div>
+    ${lineChart(chartData)}
+  </div>
   <div class="card"><h3>Annual snapshot (Dec 31)</h3>
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl" style="min-width:400px">${makeColgroup([6,12,12,12,8])}<thead><tr>
       <th>Year</th><th class="r">Securities</th><th class="r">Cryptos</th><th class="r">Total</th><th class="r">Chg.</th>
@@ -1147,13 +1164,15 @@ function upTradeTicker(key,id,newTicker){
 async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
 function addHisto(){
   const y=DATA.historique.length?Math.max(...DATA.historique.map(h=>h.year))+1:new Date().getFullYear();
+  if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}
+  if(DATA.historique.some(h=>h.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}
   DATA.historique.push({year:y,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
   saveData();render();
 }
 function upHisto(i,f,v){
   const h=DATA.historique[i];
   if(f==='currency'){h.currency=v;invalidateFxSource(h,'fxRateSource');}
-  else if(f==='year'){h.year=parseInt(v)||0;invalidateFxSource(h,'fxRateSource');}
+  else if(f==='year'){const y=parseInt(v)||0;if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}if(DATA.historique.some((e,j)=>j!==i&&e.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}h.year=y;invalidateFxSource(h,'fxRateSource');}
   else if(f==='crypto'){h.crypto=parseFloat(v)||0;}
   else if(f==='securities'){h.securities=parseFloat(v)||0;}
   h.total=(h.securities||0)+(h.crypto||0);
