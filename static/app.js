@@ -54,7 +54,7 @@ async function saveData(){
     headers:{'Content-Type':'application/json'},body:JSON.stringify(DATA)});
 }
 async function quitApp(){
-  if(!confirm('Stop the server?'))return;
+  if(!(await showConfirm('Stop the server?')))return;
   await fetch('/api/quit').catch(()=>{});
   document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:1.4rem;color:#6b7a99">👋 Stopped.</div>';
 }
@@ -93,6 +93,46 @@ function toast(msg,bg){
   const d=document.createElement('div');d.className='toast';
   d.style.background=bg;d.textContent=msg;document.body.appendChild(d);
   setTimeout(()=>d.remove(),6000);
+}
+
+// Modal
+let _modalResolve=null;
+document.addEventListener('keydown',e=>{
+  const o=document.getElementById('modal-overlay');
+  if(!o||o.style.display==='none')return;
+  if(e.key==='Enter'){e.preventDefault();_modalOk();}
+  else if(e.key==='Escape'){e.preventDefault();_modalCancel();}
+});
+function _modalOk(){
+  const inp=document.getElementById('modal-input');
+  const v=inp.style.display!=='none'?inp.value:true;
+  document.getElementById('modal-overlay').style.display='none';
+  if(_modalResolve){_modalResolve(v);_modalResolve=null;}
+}
+function _modalCancel(){
+  const inp=document.getElementById('modal-input');
+  const v=inp.style.display!=='none'?null:false;
+  document.getElementById('modal-overlay').style.display='none';
+  if(_modalResolve){_modalResolve(v);_modalResolve=null;}
+}
+function showPrompt(label,defaultValue=''){
+  return new Promise(resolve=>{
+    _modalResolve=resolve;
+    document.getElementById('modal-msg').textContent=label;
+    const inp=document.getElementById('modal-input');
+    inp.style.display='block';inp.value=defaultValue||'';
+    document.getElementById('modal-overlay').style.display='flex';
+    setTimeout(()=>inp.focus(),30);
+  });
+}
+function showConfirm(message){
+  return new Promise(resolve=>{
+    _modalResolve=resolve;
+    document.getElementById('modal-msg').textContent=message;
+    document.getElementById('modal-input').style.display='none';
+    document.getElementById('modal-overlay').style.display='flex';
+    setTimeout(()=>document.querySelector('#modal-overlay .btn-blue').focus(),30);
+  });
 }
 
 // Helpers
@@ -458,12 +498,12 @@ function renderInfo(){
 function optSetCurrency(c){pendingSettings.currency=c;document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewBroker(){optShowNewBroker=!optShowNewBroker;if(optShowNewBroker){optNewBroker='';optNewBrokerErr=null;}document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewClass(){optShowNewClass=!optShowNewClass;if(optShowNewClass){optNewClass='';optNewClassErr=null;}document.getElementById('app').innerHTML=renderOptions();}
-function optDeleteBrokerImm(i){
+async function optDeleteBrokerImm(i){
   const val=(DATA.settings.brokers||[])[i];
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.broker===val);
   if(used.length>0){
-    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?'))return;
+    if(!(await showConfirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?')))return;
     DATA.cto=DATA.cto.map(p=>p.broker===val?{...p,broker:''}:p);
   }
   DATA.settings.brokers=DATA.settings.brokers.filter((_,j)=>j!==i);
@@ -481,12 +521,12 @@ function optAddBrokerNew(){
   saveData();
   document.getElementById('app').innerHTML=renderOptions();
 }
-function optDeleteClassImm(i){
+async function optDeleteClassImm(i){
   const val=(DATA.settings.classes||[])[i];
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.classe===val);
   if(used.length>0){
-    if(!confirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?'))return;
+    if(!(await showConfirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?')))return;
     DATA.cto=DATA.cto.map(p=>p.classe===val?{...p,classe:''}:p);
   }
   DATA.settings.classes=DATA.settings.classes.filter((_,j)=>j!==i);
@@ -801,16 +841,16 @@ async function syncHistoFx(){
     render();
   }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
 }
-function manualHistoFx(i){
+async function manualHistoFx(i){
   const h=DATA.historique[i];if(!h)return;
   const cur=h.currency?h.currency.toUpperCase():'?';
   const optCur=getCur().code.toUpperCase();
   const current=h.fxRate;
-  const v=prompt('Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
+  const v=await showPrompt('Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
     current?current.toFixed(4):'');
   if(v===null)return;
   const p=parseFloat(v.replace(',','.'));
-  if(isNaN(p)||p<=0){alert('Invalid rate');return;}
+  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   DATA.historique[i]={...h,fxRate:p,fxRateSource:'manual'};
   saveData();render();
 }
@@ -986,28 +1026,28 @@ function upCryptoTicker(id,newTicker){
   DATA.crypto=DATA.crypto.map(p=>p.id===id?{...p,ticker:t,currency:result.currency,livePrice:null,priceSource:'none',priceDate:null}:p);
   saveData();render();
 }
-function manualFx(key,id,flow){
+async function manualFx(key,id,flow){
   const trade=(DATA[key]||[]).find(x=>x.id===id);if(!trade)return;
   const rateField =flow==='buy'?'fxRateBuy':'fxRateSell';
   const sourceField=rateField+'Source';
   const cur=trade.currency?trade.currency.toUpperCase():'?';
   const optCur=getCur().code.toUpperCase();
   const current=trade[rateField];
-  const v=prompt(
+  const v=await showPrompt(
     'Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
     current?current.toFixed(4):''
   );
-  if(v===null)return; // annulé
+  if(v===null)return;
   const p=parseFloat(v.replace(',','.'));
-  if(isNaN(p)||p<=0){alert('Invalid rate');return;}
+  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   DATA[key]=DATA[key].map(x=>x.id===id?{...x,[rateField]:p,[sourceField]:'manual'}:x);
   saveData();render();
 }
-function manualPrice(type,id){
+async function manualPrice(type,id){
   const pos=(DATA[type]||[]).find(x=>x.id===id);
   const cur=pos&&pos.currency?pos.currency.toUpperCase():'?';
-  const v=prompt('Price in '+cur+':');if(!v)return;
-  const p=parseFloat(v.replace(',','.'));if(isNaN(p)||p<=0){alert('Invalid price');return;}
+  const v=await showPrompt('Price in '+cur+':');if(!v)return;
+  const p=parseFloat(v.replace(',','.'));if(isNaN(p)||p<=0){toast('Invalid price','#7f1d1d');return;}
   const now=isoNow();
   DATA[type]=DATA[type].map(x=>x.id===id?{...x,livePrice:p,priceSource:'manual',priceDate:now}:x);
   saveData();render();
@@ -1020,7 +1060,7 @@ function addPos(type){
       currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null});
   saveData();render();
 }
-function delPos(type,id){if(!confirm('Delete?'))return;DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();}
+async function delPos(type,id){if(!(await showConfirm('Delete?')))return;DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();}
 function addPurch(type,pid){
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:[...p.purchases,{date:'',qty:0,price:0,fees:0}]}:p);
   saveData();render();
@@ -1097,7 +1137,7 @@ function upTradeTicker(key,id,newTicker){
   });
   saveData();render();
 }
-function delTrade(key,id){if(!confirm('Delete?'))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
+async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
 function addHisto(){
   const y=DATA.historique.length?Math.max(...DATA.historique.map(h=>h.year))+1:new Date().getFullYear();
   DATA.historique.push({year:y,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
@@ -1112,7 +1152,7 @@ function upHisto(i,f,v){
   h.total=(h.securities||0)+(h.crypto||0);
   saveData();render();
 }
-function delHisto(i){DATA.historique.splice(i,1);saveData();render();}
+async function delHisto(i){if(!(await showConfirm('Delete?')))return;DATA.historique.splice(i,1);saveData();render();}
 function exportZIP(){
   const a=document.createElement('a');
   a.href='/api/export';

@@ -11,6 +11,16 @@
   <button class="btn btn-green" onclick="syncAll()" style="margin-left:auto">🔄 Sync all</button>
   <button class="btn" onclick="quitApp()" style="margin-left:8px;background:#7f1d1d;border-color:#991b1b;color:#fca5a5">⏹ Quit</button>
 </div>
+<div id="modal-overlay" style="display:none" onclick="if(event.target===this)_modalCancel()">
+  <div class="modal-box">
+    <p id="modal-msg"></p>
+    <input id="modal-input" type="text" style="display:none">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="_modalCancel()">Cancel</button>
+      <button class="btn btn-blue" onclick="_modalOk()">OK</button>
+    </div>
+  </div>
+</div>
 <div class="main" id="app"></div>
 <script src="/static/app.js"></script>
 </body></html>

@@ -53,3 +53,11 @@ tr:hover td{background:#1a1f35}
 .resp-tbl td,.resp-tbl th{overflow:hidden}
 .resp-tbl td input,.resp-tbl td select{width:100%;min-width:0}
 .btn-col{width:40px;text-align:center;padding:2px 4px}
+#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;
+  display:flex;align-items:center;justify-content:center}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:22px 24px;min-width:280px;max-width:420px;width:90%;
+  box-shadow:0 8px 32px rgba(0,0,0,.5)}
+#modal-msg{color:var(--text);font-size:13px;margin-bottom:16px;line-height:1.5;white-space:pre-wrap}
+#modal-input{width:100%;margin-bottom:16px}
+.modal-btns{display:flex;justify-content:flex-end;gap:8px}

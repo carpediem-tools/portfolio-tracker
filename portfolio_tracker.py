@@ -281,8 +281,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif self.path == "/api/sync":        self.handle_sync("all")
             elif self.path == "/api/sync/cto":    self.handle_sync("cto")
             elif self.path == "/api/sync/crypto":   self.handle_sync("crypto")
-            elif self.path == "/api/syncfx/cto":    self.handle_syncfx("cto")
-            elif self.path == "/api/syncfx/crypto": self.handle_syncfx("crypto")
+            elif self.path == "/api/syncfx/cto":         self.handle_syncfx("cto")
+            elif self.path == "/api/syncfx/crypto":       self.handle_syncfx("crypto")
+            elif self.path == "/api/syncfx/historique":   self.handle_syncfx_historique()
             elif self.path == "/api/quit":          self.handle_quit()
             elif self.path == "/api/export":        self.handle_export()
             else: self.send_response(404); self.end_headers()
@@ -387,6 +388,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     fx_fail.append({"id": trade_id, "flow": flow, "error": r["error"]})
                     print(f"  syncfx {scope} [{trade_id}] {flow} ✗: {r['error']}")
+
+        save_data(data)
+        self.send_json({"fx_ok": fx_ok, "fx_fail": fx_fail, "data": data})
+
+    def handle_syncfx_historique(self):
+        """Sync des taux FX Frankfurter au 31/12 pour chaque ligne historique (⚪ et 🔴 uniquement)."""
+        data = load_data()
+        options_cur = data.get("settings", {}).get("currency", "eur")
+        historique = data.get("historique", [])
+        current_year = datetime.now().year
+        fx_ok = 0
+        fx_fail = 0
+
+        for h in historique:
+            year = h.get("year")
+            if not year:
+                continue
+            source = h.get("fxRateSource")
+            if source in ("frankfurter", "auto", "manual", "today"):
+                continue
+            from_cur = (h.get("currency") or "eur").upper()
+            to_cur   = options_cur.upper()
+            if from_cur == to_cur:
+                h["fxRate"]       = 1.0
+                h["fxRateSource"] = "auto"
+                fx_ok += 1
+                continue
+            if year < 1999:
+                h["fxRateSource"] = "ko"
+                fx_fail += 1
+                continue
+            if year >= current_year:
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                r = fetch_fx_rate_at(from_cur, to_cur, date_str)
+                if r["ok"]:
+                    h["fxRate"]       = r["rate"]
+                    h["fxRateSource"] = "today"
+                    fx_ok += 1
+                    print(f"  syncfx historique [{year}]: {from_cur}→{to_cur} today = {r['rate']}")
+                else:
+                    h["fxRateSource"] = "ko"
+                    fx_fail += 1
+                    print(f"  syncfx historique [{year}] ✗: {r['error']}")
+            else:
+                date_str = f"{year}-12-31"
+                r = fetch_fx_rate_at(from_cur, to_cur, date_str)
+                if r["ok"]:
+                    h["fxRate"]       = r["rate"]
+                    h["fxRateSource"] = "frankfurter"
+                    fx_ok += 1
+                    print(f"  syncfx historique [{year}]: {from_cur}→{to_cur} @ {date_str} = {r['rate']}")
+                else:
+                    h["fxRateSource"] = "ko"
+                    fx_fail += 1
+                    print(f"  syncfx historique [{year}] ✗: {r['error']}")
 
         save_data(data)
         self.send_json({"fx_ok": fx_ok, "fx_fail": fx_fail, "data": data})
@@ -568,14 +624,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # currency injectée depuis settings ; classes aplati en class_<clé> (union triée)
         historique = data.get('historique', [])
         all_class_keys = sorted({k for h in historique for k in (h.get('classes') or {})})
-        HEADERS_HISTO  = ["year", "currency", "total", "crypto"] + [f"class_{k}" for k in all_class_keys]
+        HEADERS_HISTO  = ["year", "currency", "fxRate", "fxRateSource", "securities", "crypto", "total"] + [f"class_{k}" for k in all_class_keys]
         histo_rows = []
         for h in historique:
             row = {
-                "year":     h.get('year',   ""),
-                "currency": display_cur,
-                "total":    h.get('total',  ""),
-                "crypto":   h.get('crypto', ""),
+                "year":         h.get('year',         ""),
+                "currency":     display_cur,
+                "fxRate":       h.get('fxRate',       ""),
+                "fxRateSource": h.get('fxRateSource', ""),
+                "securities":   h.get('securities',   ""),
+                "crypto":       h.get('crypto',       ""),
+                "total":        h.get('total',        ""),
             }
             classes = h.get('classes') or {}
             for k in all_class_keys:
