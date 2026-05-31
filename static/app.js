@@ -493,10 +493,7 @@ function renderInfo(){
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:10px;font-weight:600">Documentation</label>
-      <p id="docPlaceholder" style="font-size:13px;color:var(--text2);line-height:1.6">
-        📖 User documentation is being finalized.<br>
-        It will be accessible from this tab in a future version.
-      </p>
+      <a href="/docs" target="_blank" class="btn btn-blue" style="font-size:13px;text-decoration:none;display:inline-block">📖 Open documentation</a>
     </div>
   </div>`;
 }

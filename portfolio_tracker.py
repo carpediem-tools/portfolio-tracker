@@ -286,6 +286,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif self.path == "/api/syncfx/historique":   self.handle_syncfx_historique()
             elif self.path == "/api/quit":          self.handle_quit()
             elif self.path == "/api/export":        self.handle_export()
+            elif self.path == "/docs":              self.serve_static("docs.html")
             else: self.send_response(404); self.end_headers()
         except Exception as e:
             print(f"\033[91m✗ GET {self.path} → {e}\033[0m")
