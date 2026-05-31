@@ -852,6 +852,7 @@ async function manualHistoFx(i){
   if(v===null)return;
   const p=parseFloat(v.replace(',','.'));
   if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
+  if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA.historique[i]={...h,fxRate:p,fxRateSource:'manual'};
   saveData();render();
 }
@@ -1041,14 +1042,19 @@ async function manualFx(key,id,flow){
   if(v===null)return;
   const p=parseFloat(v.replace(',','.'));
   if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
+  if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA[key]=DATA[key].map(x=>x.id===id?{...x,[rateField]:p,[sourceField]:'manual'}:x);
   saveData();render();
 }
 async function manualPrice(type,id){
   const pos=(DATA[type]||[]).find(x=>x.id===id);
   const cur=pos&&pos.currency?pos.currency.toUpperCase():'?';
-  const v=await showPrompt('Price in '+cur+':');if(!v)return;
+  const current=pos&&pos.livePrice!=null?pos.livePrice:null;
+  const v=await showPrompt('Price in '+cur+(current!=null?' (current: '+current.toFixed(2)+')':'')+':',
+    current!=null?current.toFixed(2):'');
+  if(v===null)return;
   const p=parseFloat(v.replace(',','.'));if(isNaN(p)||p<=0){toast('Invalid price','#7f1d1d');return;}
+  if(current!=null&&p===parseFloat(current.toFixed(2)))return;
   const now=isoNow();
   DATA[type]=DATA[type].map(x=>x.id===id?{...x,livePrice:p,priceSource:'manual',priceDate:now}:x);
   saveData();render();
