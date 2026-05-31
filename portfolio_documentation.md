@@ -9,7 +9,7 @@
 
 1. [General architecture](#1-general-architecture)
 2. [Dashboard tab](#2-dashboard-tab)
-3. [Securities tab](#3-cto-tab)
+3. [Securities tab](#3-securities-tab)
 4. [Cryptos tab](#4-cryptos-tab)
 5. [Securities Sales / Crypto Sales tabs](#5-sales-tabs)
 6. [History tab](#6-history-tab)
@@ -22,7 +22,6 @@
 13. [Price synchronization](#13-price-synchronization)
 14. [Data and storage](#14-data-and-storage)
 15. [CSV export](#15-csv-export)
-16. [Upcoming features](#16-upcoming-features)
 
 ---
 
@@ -54,7 +53,7 @@ Consolidated view of the entire portfolio.
 
 ### Pie charts
 Four breakdown charts, all expressed in the **Options currency** (converted at today's rate):
-- By asset class (Actions / Métaux / Immo / Cryptos)
+- By asset class — one segment per asset class defined in Options, plus an automatic **Cryptos** segment grouping all crypto positions and a **?** segment for securities that have no class assigned
 - Individual CTO positions
 - Individual Crypto positions
 - By broker (CTO only)
@@ -64,10 +63,10 @@ Four breakdown charts, all expressed in the **Options currency** (converted at t
 ### Annual trend chart
 Change in total valuation year over year, fed by data entered in the History tab.
 
-Each history row has its own entry currency. The chart converts each value to the Options currency at today's rate. Years with missing FX data (daily rates stored in `fxRates`, fetched via the 🔄 Sync button) are dropped from the chart. The axis and label symbol dynamically follows the Options currency.
+Each history row has its own entry currency. Each value is converted to the Options currency using the row's stored FX rate — the Frankfurter rate at December 31 of the row's year, or the rate at today's date when the row is the current year (for which December 31 has not yet occurred). Rows whose FX rate is missing or invalid are dropped from the chart. The axis and value labels use the symbol of the Options currency.
 
 ### Annual snapshot table
-Below the chart, a table summarizes year by year the totals, share by asset class, crypto share, and the change (`%` vs. the previous year). All values are converted to the Options currency. Cells showing `—` indicate that an FX conversion was missing for that row.
+Below the chart, a table summarizes, year by year: the Securities total, the Cryptos total, the overall Total, and the change (`%` vs. the previous year). All amounts are converted to the Options currency using each row's stored FX rate. A cell shows `—` when the FX rate required for that row is missing or invalid.
 
 ---
 
@@ -116,10 +115,10 @@ The **Total** row shows the overall quantity, cumulative fees, total invested, a
 
 | Color | Meaning |
 |---|---|
-| 🟢 Green | Price fetched or entered today |
-| 🟡 Yellow | Existing price but stale (date ≠ today) |
-| 🔴 Red | Last sync failed |
-| ⚪ White | Never synced (or invalidated after ticker change) |
+| 🟢 Green | Price fetched from the market today |
+| 🟡 Yellow | A manually entered price, or a fetched price whose date is no longer today |
+| 🔴 Red | The last automatic sync failed for this ticker |
+| ⚪ White | Never synced (or invalidated after a ticker change) |
 
 ---
 
@@ -179,20 +178,20 @@ Same rules as the live screens:
 - **Crypto Sales**: `id:currency` format
 - An invalid ticker is rejected with an error toast, the previous value is restored.
 
-> **A sale's ticker is not linked to an existing position.** You can enter historical sales of assets you no longer hold without recreating the original position.
+> **A sale's ticker is not linked to an existing position.** Historical sales of assets no longer held can be recorded without recreating the original position.
 
-> **Important:** when selling a partial lot (e.g. 3 out of 10 shares purchased across multiple lots), enter `qty = 3`, `buy avg cost = overall WAC of the position`, `buy fees = proportional share of the original purchase fees`.
+> **Important:** for a partial lot (e.g. 3 of 10 shares purchased across several lots), the sale is entered with `qty = 3`, `buy avg cost = overall WAC of the position`, and `buy fees = the proportional share of the original purchase fees`.
 
 ### Sales KPIs
 
 A single **Realized P&L** KPI expressed in the **Options currency**, calculated using the FX rates fixed at each transaction date (fxRateSell and fxRateBuy). See [section 11](#11-historical-fx-rates-frankfurter) for full FX rate management.
 
-- Sales without an FX rate (⚪ status indicator) are excluded from the total; their count is shown below the KPI in gray.
-- A ⚠️ **No FX rate** KPI appears if at least one sale is missing a rate, prompting a re-sync.
+- Sales without an FX rate (⚪ status indicator) are excluded from the total; once an FX sync has been attempted, their count is shown below the KPI in gray.
+- After an FX sync has been attempted, a ⚠️ **No FX rate** KPI appears if at least one sale is still missing a rate, prompting a re-sync.
 
 ### FX S and FX B columns
 
-Each FX cell has an ✏️ button: clicking it opens an input box to enter the rate manually (useful if Frankfurter is unavailable or if you want to use your broker's exact rate). See [section 11](#11-historical-fx-rates-frankfurter).
+Each FX cell has an ✏️ button: clicking it opens an input box to enter the rate manually (useful when Frankfurter is unavailable, or when the broker's exact rate is preferred). See [section 11](#11-historical-fx-rates-frankfurter).
 
 ---
 
@@ -206,12 +205,12 @@ Manual entry of portfolio valuations as of December 31 each year.
 
 | Column | Content |
 |---|---|
-| **Year** | Fiscal year — sortable via ↑/↓ button in the column header |
+| **Year** | Fiscal year — sortable via the ↑/↓ button in the column header |
 | **Currency** | Row entry currency (EUR, USD, CHF, GBP, JPY, HKD, CNY) |
-| **Securities** | Securities total as of Dec 31 — **fixed column**, cannot be removed |
-| **Cryptos** | Crypto total as of Dec 31 — **fixed column**, cannot be removed |
-| **Total** | Total portfolio valuation as of Dec 31 |
-| **FX** | Frankfurter rate (native → Options currency) at Dec 31 of the row's year — status indicator ⚪🟢🟡🔴 and ✏️ manual edit button |
+| **FX** | Frankfurter rate (row currency → Options currency) at Dec 31 of the row's year — status indicator ⚪🟢🟡🔴 and ✏️ manual edit button |
+| **Securities** | Securities total as of Dec 31 — entered value, **fixed column**, cannot be removed |
+| **Cryptos** | Crypto total as of Dec 31 — entered value, **fixed column**, cannot be removed |
+| **Total** | **Computed, read-only:** `Securities + Cryptos`. Recalculated automatically whenever the Securities or Cryptos value changes |
 
 ### FX column
 
@@ -225,7 +224,7 @@ Status indicators and the ✏️ manual entry button follow the same logic as th
 
 When a row is created, the default currency is the current Options currency. It can be changed row by row.
 
-Values are entered in **each row's own currency**. When displayed on the Dashboard, each value is converted to the Options currency using the row's FX rate (or today's rate if none is stored).
+Only the **Securities** and **Cryptos** amounts are entered, in **each row's own currency**. The **Total** is computed automatically as their sum and is not editable. On the Dashboard, each amount is converted to the Options currency using the row's stored FX rate (the Frankfurter rate at December 31 of the row's year, or the rate at today's date for the current year). A row whose FX rate is missing or invalid is excluded from the Dashboard chart and snapshot table.
 
 This data feeds the line chart and annual snapshot table in the Dashboard.
 
@@ -245,8 +244,8 @@ Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click **💾 Save** to apply.
 | Dashboard — Total valuation | **Options currency** (consolidation) |
 | Dashboard — Pie charts | **Options currency** (converted at today's rate) |
 | Dashboard — Annual trend chart + snapshot table | **Options currency** (converted from each history row's currency) |
-| Securities tab — Top banner (total Securities valuation) | **Options currency** |
-| Cryptos tab — Top banner (total Crypto valuation) | **Options currency** |
+| Securities tab — KPIs (Invested, Valuation, P&L) | **Options currency** (consolidated over open Securities positions) |
+| Cryptos tab — KPIs (Invested, Valuation, P&L) | **Options currency** (consolidated over open Crypto positions) |
 | Individual CTO and Crypto rows | Native currency (never converted) |
 | Sales tabs — P&L KPIs | **Options currency** (via fixed FX rates — see [section 11](#11-historical-fx-rates-frankfurter)) |
 | Individual Sales rows — Total S / Total B / P&L | **Options currency** (via fixed FX rates) |
@@ -256,7 +255,11 @@ Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click **💾 Save** to apply.
 **Changing the Options currency** updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the **fixed FX rates** for all sales (Securities Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see [section 11](#11-historical-fx-rates-frankfurter)). 🟡 (manual) rates are preserved. Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.
 
 ### Brokers and asset classes
-Configurable lists. Brokers and asset classes can be added, renamed, and deleted. A deletion first checks that no position (CTO or history row) references the item; otherwise it is blocked with an explicit message.
+Configurable lists. Brokers and asset classes can be **added** and **deleted**; renaming is not available (an entry is removed and, if needed, re-created under a new name). Each list holds at most **10 entries**, and each name is limited to **15 characters**.
+
+Deleting an entry that is referenced by one or more open Securities positions is **not blocked**: a confirmation dialog reports how many positions use it and warns that the corresponding field will be cleared in those positions. On confirmation, the entry is removed and the field is emptied. Only open Securities positions are checked — sales and History rows are not.
+
+Broker and asset-class additions and deletions are saved immediately. By contrast, a change to the reporting currency takes effect only after clicking **💾 Save**.
 
 ### Export / Import JSON
 - **Export**: downloads `portfolio_data.json` — useful for backup or migration.
@@ -309,7 +312,7 @@ When the ticker of a position or a sale is changed:
 
 - The currency is immediately recalculated.
 - If the new ticker is valid, **the live price is invalidated** (livePrice → null, ⚪ status indicator). A re-sync is needed.
-- Stored purchases (`purchases[]`) remain unchanged but are **reinterpreted in the new currency**. For example, a purchase of 15,000 entered when the position was in USD will now display as 15,000 EUR if you switch the ticker to `bitcoin:eur`.
+- Stored purchases (`purchases[]`) remain unchanged but are **reinterpreted in the new currency**. For example, a purchase of 15,000 entered when the position was in USD will then display as 15,000 EUR if the ticker is switched to `bitcoin:eur`.
 - On the Sales screens, if the new currency differs from the previous one, the fixed FX rates are invalidated (see [section 11](#11-historical-fx-rates-frankfurter)).
 
 > This behavior is consistent with the "ticker encodes currency" design: it ensures a position is always single-currency and that everything is self-contained within the row. But it also means **changing the ticker of a position that has purchases implicitly changes the currency of all stored amounts.** The application detects the currency change and marks the affected FX rates with a 🔴 indicator.
@@ -434,8 +437,8 @@ The native currency is automatically inferred from the suffix when the ticker is
 | Indicator | Meaning | Condition |
 |----------|---------------|-----------|
 | ⚪ | Never synced | No sync performed |
-| 🟢 | Today's price | Sync date = today |
-| 🟡 | Stale price | Sync date ≠ today |
+| 🟢 | Today's price | Fetched from the market today |
+| 🟡 | Stale or manual price | Fetched price dated before today, or a manually entered price |
 | 🔴 | Sync failed | Yahoo Finance unreachable or invalid ticker |
 
 A 🟡 price is still used in calculations (P&L, valuation) but may no longer reflect current market conditions.
@@ -520,7 +523,7 @@ Enter the exchange rate (e.g. `1.0742` for 1 USD = 1.0742 EUR).
 
 The source switches to 🟡 `manual`. This rate will be **overwritten** by the next FX sync.
 
-**Use cases:** Frankfurter unavailable, historical rate not available (before 1999), or exact broker rate preferred — in the latter case, do not re-sync after entry.
+**Use cases:** Frankfurter unavailable, historical rate not available (before 1999), or exact broker rate preferred — in that case, avoid re-syncing after entry.
 
 ### Automatic rate invalidation
 
@@ -577,7 +580,7 @@ For each lot, the purchase value (`qty × price`) is added to the brokerage fees
 #### Weighted average cost — WAC (`pru`)
 
 ```
-pru = ti / tq   (si tq > 0, sinon 0)
+pru = ti / tq   (if tq > 0, otherwise 0)
 ```
 
 Fee-inclusive weighted average cost per unit.
@@ -587,7 +590,7 @@ Fee-inclusive weighted average cost per unit.
 #### Valuation (`valo`)
 
 ```
-valo = tq × livePrice   (si livePrice présent, sinon 0)
+valo = tq × livePrice   (if livePrice is set, otherwise 0)
 ```
 
 Current value of the position at the live price. If no live price is available, valuation is 0 and the position is excluded from Dashboard KPIs.
@@ -607,7 +610,7 @@ Difference between current value and total invested. Positive = unrealized gain,
 #### Chg — Percentage change (`evol`)
 
 ```
-evol = (valo − ti) / ti   (si ti > 0, sinon 0)
+evol = (valo − ti) / ti   (if ti > 0, otherwise 0)
 ```
 
 Percentage change relative to the total invested.
@@ -669,7 +672,7 @@ Actual gain or loss realized, expressed in the Options currency.
 #### P&L % (`pct`)
 
 ```
-pct = (ts − tb) / tb   (si tb > 0, sinon 0)
+pct = (ts − tb) / tb   (if tb > 0, otherwise 0)
 ```
 
 Realized return as a percentage. This ratio is calculated in the native currency — it is currency-agnostic and always displayed, even without FX rates.
@@ -695,9 +698,15 @@ If source and destination currencies are the same, the amount is returned unchan
 
 *Example: converting 1,000 USD to EUR with `eurusd = 1.08` → `1,000 / 1.08 ≈ 925.93 €`.*
 
-### 12.4 Dashboard consolidation and CTO/Crypto top banners
+### 12.4 Consolidated totals (Securities / Cryptos tabs) and Dashboard valuation
 
-#### Total valuation (main Dashboard KPI and top banners)
+Two distinct consolidations exist, displayed in different places:
+- The **Dashboard** shows a single consolidated KPI: the **total valuation** across all live positions (Securities + Cryptos), plus an indicator counting positions excluded for lack of a price or FX rate. It does **not** display a consolidated invested amount or a consolidated P&L.
+- The **Securities** and **Cryptos** tabs each show three KPIs — **Invested**, **Valuation** and **P&L** — consolidated over that tab's own positions, all in the Options currency.
+
+All three consolidations use the same conversion logic described below.
+
+#### Total valuation (main Dashboard KPI and per-tab Valuation KPI)
 
 ```
 Valo totale = Σ convert(position.valo, position.currency, deviseOptions)
@@ -710,24 +719,24 @@ The valuations of all live positions are summed after individual conversion to t
 - *CW8.PA: valo = 1,500 €, already in EUR → 1,500 €*
 - *Total Dashboard valuation = 3,351.85 €*
 
-#### Consolidated total invested
+#### Consolidated total invested (per-tab Invested KPI)
 
 ```
 Investi total = Σ convert(position.ti, position.currency, deviseOptions)
 ```
 
-Same logic as for valuation, applied to total invested amounts. Used to calculate the consolidated P&L.
+Same logic as for valuation, applied to total invested amounts. This consolidation appears as the **Invested** KPI in the Securities and Cryptos tabs (not on the Dashboard) and is used to derive each tab's P&L.
 
 > ⚠️ **Converted at today's rate** — Purchases are historical but converted at today's rate since no per-purchase historical rate is stored. This is an acknowledged approximation: it is consistent for comparing valuation and invested amounts (both converted at the same rate), but does not exactly reflect what was paid in Options currency at the time of purchase.
 
-#### Consolidated P&L and percentage
+#### Consolidated P&L and percentage (per-tab P&L KPI)
 
 ```
 G/P consolidé = Valo totale − Investi total
 %             = G/P consolidé / Investi total
 ```
 
-Calculated from the values already converted to the Options currency.
+Calculated from the values already converted to the Options currency, and displayed as the **P&L** KPI in the Securities and Cryptos tabs.
 
 ### 12.5 Dashboard pie charts
 
@@ -737,10 +746,10 @@ The four pie charts (by asset class, by broker, CTO positions, Crypto positions)
 
 ```
 Pour chaque année h ∈ historique :
-  point.y = convert(h.total, h.currency, deviseOptions)
+  point.y = h.total × h.fxRate     (h.fxRate = taux ligne → devise Options)
 ```
 
-Each history row is converted from its own currency to the Options currency. Each row stores an optional `fxRate` field (Frankfurter rate at Dec 31 of the row's year) and `fxRateSource` (same state values as Sales rates: `null`, `"ok"`, `"manual"`, `"ko"`, `"auto"`). When present and valid, this fixed rate is used instead of today's live rate. Years for which the conversion returns `null` (missing FX) are excluded from the chart.
+Each history row is converted from its own currency to the Options currency using the row's stored `fxRate`: the Frankfurter rate at December 31 of the row's year, or — when the row is the current year, for which December 31 has not yet occurred — the rate at today's date. The matching `fxRateSource` records how the rate was obtained, using History's own vocabulary: `frankfurter` (rate at Dec 31), `today` (current-year rate at today's date), `auto` (row currency = Options currency, rate = 1.0), `manual` (manually entered), or `ko`/`null` when unavailable. Rows whose rate is missing or invalid (`ko`/`null`) are excluded from the chart and the snapshot table.
 
 The annual change in the table below the chart is calculated **after conversion**, i.e. in the Options currency:
 
@@ -794,7 +803,7 @@ pip install yfinance --break-system-packages
 Without `yfinance`, the tracker falls back to a direct Yahoo Finance API call (less reliable).
 
 ### Manual price entry ✏️
-Each position has an ✏️ button for manual price entry. Useful for unlisted assets or when synchronization fails. The entered price is treated as today's price (🟢 indicator).
+Each position has an ✏️ button for manual price entry. Useful for unlisted assets or when synchronization fails. A manually entered price is flagged with the 🟡 indicator (manual source) and is used in calculations like any other price.
 
 > **Warning:** a manually entered price will be **overwritten** by the next sync (🔄 button). If Yahoo Finance or CoinGecko return a price for that ticker, it will replace the entered value.
 
@@ -826,7 +835,7 @@ Every change made in the interface is **saved immediately** to this file. There 
       "isin": "US0378331005",
       "ticker": "AAPL",
       "broker": "Broker 1",
-      "classe": "Actions",
+      "classe": "Stocks",
       "currency": "usd",
       "purchases": [ {"date": "...", "qty": 10, "price": 150, "fees": 5} ],
       "livePrice": 180,
@@ -870,11 +879,12 @@ Every change made in the interface is **saved immediately** to this file. There 
     {
       "year": 2025,
       "currency": "eur",
-      "total": 100000,
+      "securities": 80000,
       "crypto": 20000,
+      "total": 100000,
       "classes": { "Stocks": 50000, "Metals": 10000, "Real estate": 20000 },
       "fxRate": 1.047,
-      "fxRateSource": "ok"
+      "fxRateSource": "frankfurter"
     }
   ],
   "ctoDivs": [],
@@ -882,7 +892,7 @@ Every change made in the interface is **saved immediately** to this file. There 
 }
 ```
 
-**`fxRateBuySource` / `fxRateSellSource` values:**
+**`fxRateBuySource` / `fxRateSellSource` values (Sales):**
 
 | Value | Meaning |
 |---|---|
@@ -891,6 +901,8 @@ Every change made in the interface is **saved immediately** to this file. There 
 | `"auto"` | Automatic rate (= 1.0, native currency = Options currency) |
 | `"manual"` | Manually entered rate (never overwritten automatically) |
 | `"ko"` | Stale rate (date or currency changed since last sync) |
+
+**`fxRateSource` values (History):** the History tab uses a separate vocabulary — `null` (no rate), `"frankfurter"` (rate at Dec 31 of the row's year), `"today"` (current-year rate at today's date), `"auto"` (row currency = Options currency, rate = 1.0), `"manual"` (manually entered), `"ko"` (stale rate after a year or currency change).
 
 ### Recommended backup
 The JSON file can be copied, versioned (git), or exported from the Options tab. It is human-readable and can be edited manually if needed.
@@ -936,7 +948,7 @@ An empty row separates each position+purchases block in the CSV.
 
 **`cto_live.csv`** — 24 columns
 
-| # | Colonne |
+| # | Column |
 |---|---|
 | 1 | `row_type` |
 | 2 | `id` |
@@ -947,7 +959,7 @@ An empty row separates each position+purchases block in the CSV.
 | 7 | `classe` |
 | 8 | `currency` |
 | 9 | `qty_total` |
-| 10 | `pru` |
+| 10 | `wac` |
 | 11 | `total_investi` |
 | 12 | `live_price` |
 | 13 | `valo` |
@@ -961,11 +973,11 @@ An empty row separates each position+purchases block in the CSV.
 | 21 | `purchase_price` |
 | 22 | `purchase_fees` |
 | 23 | `purchase_total_investi` |
-| 24 | `purchase_pru_lot` |
+| 24 | `purchase_lot_avg_cost` |
 
 **`crypto_live.csv`** — 21 columns
 
-| # | Colonne |
+| # | Column |
 |---|---|
 | 1 | `row_type` |
 | 2 | `id` |
@@ -973,7 +985,7 @@ An empty row separates each position+purchases block in the CSV.
 | 4 | `ticker` |
 | 5 | `currency` |
 | 6 | `qty_total` |
-| 7 | `pru` |
+| 7 | `wac` |
 | 8 | `total_investi` |
 | 9 | `live_price` |
 | 10 | `valo` |
@@ -987,11 +999,11 @@ An empty row separates each position+purchases block in the CSV.
 | 18 | `purchase_price` |
 | 19 | `purchase_fees` |
 | 20 | `purchase_total_investi` |
-| 21 | `purchase_pru_lot` |
+| 21 | `purchase_lot_avg_cost` |
 
 **`cto_sorties.csv`** — 16 columns
 
-| # | Colonne |
+| # | Column |
 |---|---|
 | 1 | `id` |
 | 2 | `name` |
@@ -1012,7 +1024,7 @@ An empty row separates each position+purchases block in the CSV.
 
 **`crypto_sorties.csv`** — 15 columns
 
-| # | Colonne |
+| # | Column |
 |---|---|
 | 1 | `id` |
 | 2 | `name` |
@@ -1032,31 +1044,19 @@ An empty row separates each position+purchases block in the CSV.
 
 **`historique.csv`** — dynamic columns
 
-| # | Colonne |
+| # | Column |
 |---|---|
 | 1 | `year` |
 | 2 | `currency` |
-| 3 | `total` |
-| 4 | `crypto` |
-| 5+ | `class_<clé>` (une colonne par classe, clés triées alphabétiquement) |
+| 3 | `fxRate` |
+| 4 | `fxRateSource` |
+| 5 | `securities` |
+| 6 | `crypto` |
+| 7 | `total` |
+| 8+ | `class_<key>` (one column per asset class, keys sorted alphabetically) |
 
 `currency` is injected from the settings (`settings.currency`). The `class_<key>` columns are generated dynamically from the union of all `classes` keys present in the history, sorted alphabetically.
 
----
-
-<a id="16-upcoming-features"></a>
-## 16. Upcoming features
-
-### Dividends (CTO)
-
-The data structure already includes a `ctoDivs` field in the JSON file, but the interface is not yet implemented.
-
-Open questions before development:
-- Per-position entry or global per year?
-- Gross or net-of-tax dividends?
-- Impact on overall P&L calculation (total return = capital gain + dividends)?
-- Display in the Dashboard (dedicated KPI? integrated into P&L?)
-- Should crypto staking income (validation rewards, DeFi interest) have a separate tab? The tax and accounting nature of staking differs from stock dividends — same tab or two separate tabs?
 
 ---
 
