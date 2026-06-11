@@ -57,7 +57,7 @@ are made:
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.13
 - yfinance library
 
 ```bash
