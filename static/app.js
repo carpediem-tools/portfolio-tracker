@@ -723,7 +723,7 @@ function renderSpot(type){
       <td class="r mono">${p.livePrice?fmtNative(c.valo,p.currency):''}</td>
       <td class="r mono ${p.livePrice&&c.ti?gpC(c.evol):''}">${p.livePrice&&c.ti?fmtP(c.evol):''}</td>
       <td class="r mono ${p.livePrice&&c.ti?gpC(c.gp):''}">${p.livePrice&&c.ti?fmtNative(c.gp,p.currency):''}</td>
-      <td class="r mono">${p.livePrice&&totI?fmtP(c.ti/totI):''}</td>
+      <td class="r mono">${p.livePrice&&totI&&convert(c.ti,p.currency,displayCur)!=null?fmtP(convert(c.ti,p.currency,displayCur)/totI):''}</td>
       <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button></td>
     </tr>`;
     if(exp){
