@@ -347,7 +347,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     res["crypto_fail"].append(ticker)
 
         fx = fetch_fx_rates()
-        if fx: data['fxRates'] = fx
+        if fx: data['fxRates'] = {**data.get('fxRates', {}), **fx}
         save_data(data)
         res["data"] = data
         self.send_json(res)
