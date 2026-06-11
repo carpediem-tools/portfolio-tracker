@@ -502,6 +502,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if f == 'jpy': return amount / fx['eurjpy'] * fx['eurchf'] if (fx.get('eurjpy') and fx.get('eurchf')) else None
                 if f == 'hkd': return amount / fx['eurhkd'] * fx['eurchf'] if (fx.get('eurhkd') and fx.get('eurchf')) else None
                 if f == 'cny': return amount / fx['eurcny'] * fx['eurchf'] if (fx.get('eurcny') and fx.get('eurchf')) else None
+            if t == 'gbp':
+                if f == 'eur': return amount * fx['eurgbp'] if fx.get('eurgbp') else None
+                if f == 'usd': return amount / fx['eurusd'] * fx['eurgbp'] if (fx.get('eurusd') and fx.get('eurgbp')) else None
+                if f == 'chf': return amount / fx['eurchf'] * fx['eurgbp'] if (fx.get('eurchf') and fx.get('eurgbp')) else None
+                if f == 'jpy': return amount / fx['eurjpy'] * fx['eurgbp'] if (fx.get('eurjpy') and fx.get('eurgbp')) else None
+                if f == 'hkd': return amount / fx['eurhkd'] * fx['eurgbp'] if (fx.get('eurhkd') and fx.get('eurgbp')) else None
+                if f == 'cny': return amount / fx['eurcny'] * fx['eurgbp'] if (fx.get('eurcny') and fx.get('eurgbp')) else None
+            if t == 'jpy':
+                if f == 'eur': return amount * fx['eurjpy'] if fx.get('eurjpy') else None
+                if f == 'usd': return amount / fx['eurusd'] * fx['eurjpy'] if (fx.get('eurusd') and fx.get('eurjpy')) else None
+                if f == 'chf': return amount / fx['eurchf'] * fx['eurjpy'] if (fx.get('eurchf') and fx.get('eurjpy')) else None
+                if f == 'gbp': return amount / fx['eurgbp'] * fx['eurjpy'] if (fx.get('eurgbp') and fx.get('eurjpy')) else None
+                if f == 'hkd': return amount / fx['eurhkd'] * fx['eurjpy'] if (fx.get('eurhkd') and fx.get('eurjpy')) else None
+                if f == 'cny': return amount / fx['eurcny'] * fx['eurjpy'] if (fx.get('eurcny') and fx.get('eurjpy')) else None
+            if t == 'hkd':
+                if f == 'eur': return amount * fx['eurhkd'] if fx.get('eurhkd') else None
+                if f == 'usd': return amount / fx['eurusd'] * fx['eurhkd'] if (fx.get('eurusd') and fx.get('eurhkd')) else None
+                if f == 'chf': return amount / fx['eurchf'] * fx['eurhkd'] if (fx.get('eurchf') and fx.get('eurhkd')) else None
+                if f == 'gbp': return amount / fx['eurgbp'] * fx['eurhkd'] if (fx.get('eurgbp') and fx.get('eurhkd')) else None
+                if f == 'jpy': return amount / fx['eurjpy'] * fx['eurhkd'] if (fx.get('eurjpy') and fx.get('eurhkd')) else None
+                if f == 'cny': return amount / fx['eurcny'] * fx['eurhkd'] if (fx.get('eurcny') and fx.get('eurhkd')) else None
+            if t == 'cny':
+                if f == 'eur': return amount * fx['eurcny'] if fx.get('eurcny') else None
+                if f == 'usd': return amount / fx['eurusd'] * fx['eurcny'] if (fx.get('eurusd') and fx.get('eurcny')) else None
+                if f == 'chf': return amount / fx['eurchf'] * fx['eurcny'] if (fx.get('eurchf') and fx.get('eurcny')) else None
+                if f == 'gbp': return amount / fx['eurgbp'] * fx['eurcny'] if (fx.get('eurgbp') and fx.get('eurcny')) else None
+                if f == 'jpy': return amount / fx['eurjpy'] * fx['eurcny'] if (fx.get('eurjpy') and fx.get('eurcny')) else None
+                if f == 'hkd': return amount / fx['eurhkd'] * fx['eurcny'] if (fx.get('eurhkd') and fx.get('eurcny')) else None
             return None
 
         def build_live_rows(positions, id_fields, headers):
@@ -630,7 +658,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for h in historique:
             row = {
                 "year":         h.get('year',         ""),
-                "currency":     display_cur,
+                "currency":     h.get('currency', display_cur),
                 "fxRate":       h.get('fxRate',       ""),
                 "fxRateSource": h.get('fxRateSource', ""),
                 "securities":   h.get('securities',   ""),
