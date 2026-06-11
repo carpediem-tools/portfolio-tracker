@@ -827,7 +827,7 @@ function histoFxBg(source){
 }
 function calcTradeOptions(t){
   const c=calcTrade(t);
-  if(t.fxRateSell==null||t.fxRateBuy==null||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
+  if(t.fxRateSell==null||t.fxRateBuy==null||t.fxRateSellSource==='ko'||t.fxRateBuySource==='ko'||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
   const tsOpt=c.ts*t.fxRateSell;
   const tbOpt=c.tb*t.fxRateBuy;
   return{tsOpt,tbOpt,gpOpt:tsOpt-tbOpt};
