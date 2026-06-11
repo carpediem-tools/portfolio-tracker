@@ -1124,7 +1124,7 @@ function upTradeTicker(key,id,newTicker){
   const old=(DATA[key].find(x=>x.id===id)||{}).ticker||'';
   if(t===old)return;
   if(!t){
-    DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:'',currency:null}:x);
+    DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:'',currency:null,fxRateBuy:null,fxRateBuySource:null,fxRateSell:null,fxRateSellSource:null}:x);
     saveData();render();return;
   }
   const isCto=key==='ctoTrades';
