@@ -1,12 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0c0f1a;--card:#141828;--border:#1e2640;--text:#c8d0e0;--text2:#6b7a99;
       --accent:#3b82f6;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--radius:8px}
-body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-height:100vh}
+body{font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-height:100vh}
 input,select{background:#0c0f1a;border:1px solid var(--border);border-radius:4px;
   padding:4px 6px;color:var(--text);font-size:12px;font-family:inherit}
 input:focus,select:focus{outline:none;border-color:var(--accent)}
-input[type=number]{width:80px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;-moz-appearance:textfield;appearance:textfield}
+input[type=number]{width:80px;text-align:right;font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;font-size:11px;-moz-appearance:textfield;appearance:textfield}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .header{background:linear-gradient(135deg,#111630,#0c0f1a);border-bottom:1px solid var(--border);
   padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
@@ -22,13 +21,13 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .kpi{flex:1 1 140px;background:#0c0f1a;border:1px solid var(--border);
   border-radius:var(--radius);padding:10px 12px;min-width:130px}
 .kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:2px}
-.kpi-value{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.kpi-value{font-size:18px;font-weight:700;font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{padding:6px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);
    font-size:9px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;white-space:nowrap}
 td{padding:5px 6px;border-bottom:1px solid #0f1325}
 tr:hover td{background:#1a1f35}
-.r{text-align:right}.mono{font-family:'JetBrains Mono',monospace;font-size:11px}
+.r{text-align:right}.mono{font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;font-size:11px}
 .gain{color:var(--green);font-weight:600}.loss{color:var(--red);font-weight:600}
 .today-cell{background:#0a2a15}.outdated-cell{background:#2a2a08}.error-cell{background:#2a0f0f}
 .computed{background:#0f1630}
