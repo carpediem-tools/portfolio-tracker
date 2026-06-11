@@ -407,7 +407,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not year:
                 continue
             source = h.get("fxRateSource")
-            if source in ("frankfurter", "auto", "manual", "today"):
+            if source in ("frankfurter", "auto"):
                 continue
             from_cur = (h.get("currency") or "eur").upper()
             to_cur   = options_cur.upper()
