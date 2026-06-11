@@ -1,8 +1,10 @@
-// Verrou FX manuel — centralise la politique d'invalidation des taux FX.
-// Règle : un taux posé manuellement ('manual') n'est jamais écrasé
-// automatiquement. Tout nouveau déclencheur d'invalidation DOIT passer
-// par cette fonction — ne jamais écrire le pattern inline.
-// Miroir Python : handle_syncfx dans portfolio_tracker.py (même règle, ligne unique).
+// Centralise la politique d'invalidation des taux FX.
+// Règle : tout déclencheur d'invalidation DOIT passer par cette fonction
+// — ne jamais écrire le pattern inline.
+// Les taux 'manual' sont écrasés comme les autres : un taux manuel encode
+// natif → ancienne devise Options et devient incorrect après un changement
+// de devise — l'invalider protège l'utilisateur d'un calcul silencieusement faux.
+// Miroir Python : handle_syncfx dans portfolio_tracker.py.
 function invalidateFxSource(obj, sourceField, value='ko'){
   obj[sourceField]=value;
 }

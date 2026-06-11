@@ -299,7 +299,7 @@ li{margin:5px 0}
   </tbody>
 </table>
 
-<p><strong>Changing the Options currency</strong> updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the <strong>fixed FX rates</strong> for all sales (Securities Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>). 🟡 (manual) rates are preserved. Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.</p>
+<p><strong>Changing the Options currency</strong> updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the <strong>fixed FX rates</strong> for all sales (Securities Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>). 🟡 (manual) rates are also invalidated (they encoded a rate toward the previous Options currency and would produce incorrect results if kept). Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.</p>
 
 <h3>Brokers and asset classes</h3>
 <p>Configurable lists. Brokers and asset classes can be <strong>added</strong> and <strong>deleted</strong>; renaming is not available (an entry is removed and, if needed, re-created under a new name). Each list holds at most <strong>10 entries</strong>, and each name is limited to <strong>15 characters</strong>.</p>
