@@ -22,7 +22,7 @@ const TABS=[
   {id:'cto',label:'💼 Securities'},
   {id:'ctoES',label:'📋 Securities Sales'},
   {id:'crypto',label:'🪙 Cryptos'},
-  {id:'cryptoES',label:'📋 Crypto Sales'},
+  {id:'cryptoES',label:'📋 Cryptos Sales'},
   {id:'historique',label:'📅 History'},
   {id:'options',label:'⚙️ Options'},
   {id:'info',label:'ℹ️ Info'}
@@ -936,7 +936,7 @@ function renderES(type){
   </tr>`}).join('');
   const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,3,8,4,5,4,4,3,7,6,5,4,3]:[8,4,8,6,5,5,3,8,4,6,5,5,3,8,8,7,4,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
-    <h3>${isCto?'📋 Securities Sales':'📋 Crypto Sales'}</h3>
+    <h3>${isCto?'📋 Securities — Sales':'📋 Cryptos — Sales'}</h3>
     <div class="kpis">
       <div class="kpi">
         <div class="kpi-label">Realized P&L</div>
