@@ -52,7 +52,13 @@ def fetch_yahoo(tickers):
             try:
                 info = yf.Ticker(t).fast_info
                 p = info.get("lastPrice") or info.get("regularMarketPrice")
-                if p: result[t] = float(p)
+                if p:
+                    price = float(p)
+                    currency = info.get("currency")
+                    if currency == "GBp":
+                        price /= 100
+                        currency = "GBP"
+                    result[t] = {"price": price, "currency": currency.lower() if currency else None}
             except: pass
         if result:
             print(f"  yfinance: {len(result)}/{len(tickers)}")
@@ -79,7 +85,7 @@ def fetch_yahoo(tickers):
                 url, headers={**H, "Referer": "https://finance.yahoo.com/"}), timeout=10).read())
             for q in data.get("quoteResponse", {}).get("result", []):
                 s, p = q.get("symbol", ""), q.get("regularMarketPrice")
-                if s and p: result[s] = float(p)
+                if s and p: result[s] = {"price": float(p), "currency": None}
             print(f"  Yahoo crumb: {len(result)}/{len(tickers)}")
     except Exception as e:
         print(f"  Yahoo error: {e}")
@@ -191,49 +197,6 @@ def parse_crypto_ticker(t):
     return cid, cur
 
 
-def get_currency_from_ticker_cto(ticker):
-    """
-    Déduit la devise native d'un ticker Yahoo Finance.
-    Miroir Python de getCurrencyFromTicker() (JS).
-    Suffixes EUR : .PA .AS .DE .F .MI .BR .LS .MC
-    Suffixes CHF : .SW .VX
-    Suffixes GBP : .L
-    Suffixes JPY : .T
-    Suffixes HKD : .HK
-    Suffixes CNY : .SS .SZ
-    Sans suffixe (pas de point) → 'usd'
-    Suffixe inconnu → None
-    """
-    if not ticker or not isinstance(ticker, str):
-        return None
-    t = ticker.strip()
-    if not t:
-        return None
-    dot = t.rfind(".")
-    if dot == -1:
-        return "usd"
-    suffix = t[dot + 1:].upper()
-    EUR_SUFFIXES = {"PA", "AS", "DE", "F", "MI", "BR", "LS", "MC"}
-    CHF_SUFFIXES = {"SW", "VX"}
-    GBP_SUFFIXES = {"L"}
-    JPY_SUFFIXES = {"T"}
-    HKD_SUFFIXES = {"HK"}
-    CNY_SUFFIXES = {"SS", "SZ"}
-    if suffix in EUR_SUFFIXES:
-        return "eur"
-    if suffix in CHF_SUFFIXES:
-        return "chf"
-    if suffix in GBP_SUFFIXES:
-        return "gbp"
-    if suffix in JPY_SUFFIXES:
-        return "jpy"
-    if suffix in HKD_SUFFIXES:
-        return "hkd"
-    if suffix in CNY_SUFFIXES:
-        return "cny"
-    return None
-
-
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
 
@@ -312,8 +275,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 for pos in data["cto"]:
                     t = pos.get("ticker", "")
                     if t in yahoo:
-                        pos["livePrice"] = yahoo[t]; pos["priceSource"] = "auto"
+                        entry = yahoo[t]
+                        pos["livePrice"] = entry["price"]; pos["priceSource"] = "auto"
                         pos["priceDate"] = now; res["stocks_ok"].append(t)
+                        currency = entry.get("currency")
+                        if currency is not None and pos.get("currency") != currency:
+                            pos["currency"] = currency
                     elif t:
                         if pos.get("livePrice"): pos["priceSource"] = "stale"
                         res["stocks_fail"].append(t)
@@ -362,13 +329,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         for trade in trades:
             trade_id = trade.get("id", "?")
-            # Déterminer la devise native du ticker
-            if scope == "cto":
-                native = get_currency_from_ticker_cto(trade.get("ticker"))
-            else:
-                _, native = parse_crypto_ticker(trade.get("ticker"))
+            native = trade.get("currency")
             if not native:
-                fx_fail.append({"id": trade_id, "error": "ticker invalide ou devise non déductible"})
+                fx_fail.append({"id": trade_id, "error": "devise non définie"})
                 continue
 
             for flow in ("buy", "sell"):
@@ -640,7 +603,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ]
         HEADERS_CRYPTO_SORTIES = [
-            "id", "name", "ticker", "currency",
+            "id", "name", "currency",
             "buyDate", "priceBuy", "feesBuy", "fxRateBuy", "fxRateBuySource",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ]

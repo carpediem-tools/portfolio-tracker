@@ -11,10 +11,10 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
   padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
 .logo{font-size:17px;font-weight:700;color:#f0f2f8;letter-spacing:-.03em}
 .tabs{display:flex;gap:3px;flex-wrap:wrap}
-.tab{padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:600;
+.tab{padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;
   background:transparent;color:var(--text2);transition:.2s;font-family:inherit}
 .tab:hover{background:#1a2040;color:var(--text)}.tab.active{background:var(--accent);color:#fff}
-.main{padding:14px;max-width:1500px;margin:0 auto}
+.main{padding:8px;max-width:1920px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
 .card h3{color:#f0f2f8;font-size:14px;margin-bottom:10px;font-weight:600}
 .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
@@ -22,16 +22,16 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
   border-radius:var(--radius);padding:10px 12px;min-width:130px}
 .kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:2px}
 .kpi-value{font-size:18px;font-weight:700;font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace}
-table{width:100%;border-collapse:collapse;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}
 th{padding:6px;text-align:left;border-bottom:2px solid var(--border);color:var(--text2);
-   font-size:9px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;white-space:nowrap}
+   font-size:13px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;white-space:nowrap}
 td{padding:5px 6px;border-bottom:1px solid #0f1325}
 tr:hover td{background:#1a1f35}
-.r{text-align:right}.mono{font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;font-size:11px}
+.r{text-align:right}.mono{font-family:ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;font-size:14px}
 .gain{color:var(--green);font-weight:600}.loss{color:var(--red);font-weight:600}
 .today-cell{background:#0a2a15}.outdated-cell{background:#2a2a08}.error-cell{background:#2a0f0f}
 .computed{background:#0f1630}
-.btn{padding:5px 10px;border-radius:5px;border:none;cursor:pointer;font-size:11px;
+.btn{padding:5px 10px;border-radius:5px;border:none;cursor:pointer;font-size:13px;
   font-weight:600;font-family:inherit;transition:.15s}
 .btn:hover{filter:brightness(1.15)}
 .btn-blue{background:var(--accent);color:#fff}.btn-green{background:var(--green);color:#000}
@@ -48,9 +48,9 @@ tr:hover td{background:#1a1f35}
 .toast{position:fixed;bottom:14px;right:14px;padding:9px 14px;border-radius:7px;
   font-size:11px;font-weight:600;z-index:1000;color:#fff;max-width:520px;
   box-shadow:0 4px 16px #0008}
-.resp-tbl{table-layout:fixed;min-width:720px}
+.resp-tbl{table-layout:fixed;min-width:600px}
 .resp-tbl td,.resp-tbl th{overflow:hidden}
-.resp-tbl td input,.resp-tbl td select{width:100%;min-width:0}
+.resp-tbl td input,.resp-tbl td select{width:100%;min-width:0;font-size:inherit}
 .btn-col{width:40px;text-align:center;padding:2px 4px}
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2000;
   display:flex;align-items:center;justify-content:center}
@@ -60,3 +60,18 @@ tr:hover td{background:#1a1f35}
 #modal-msg{color:var(--text);font-size:13px;margin-bottom:16px;line-height:1.5;white-space:pre-wrap}
 #modal-input{width:100%;margin-bottom:16px}
 .modal-btns{display:flex;justify-content:flex-end;gap:8px}
+#chart-tooltip{
+  position:fixed;
+  pointer-events:none;
+  display:none;
+  background:var(--bg2, #1e2235);
+  border:1px solid var(--border, #2d3454);
+  border-radius:6px;
+  padding:6px 10px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--text1, #e2e8f0);
+  white-space:nowrap;
+  z-index:999;
+  box-shadow:0 2px 8px rgba(0,0,0,0.4);
+}

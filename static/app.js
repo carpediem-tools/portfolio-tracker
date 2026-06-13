@@ -213,43 +213,28 @@ function convert(amount,fromCur,toCur){
   }
   return null;
 }
-// getCurrencyFromTicker — cas de test
-//   'AAPL'      → 'usd'    (pas de point → NASDAQ/NYSE par défaut)
-//   'CW8.PA'    → 'eur'
-//   'AIR.PA'    → 'eur'
-//   'NESN.SW'   → 'chf'
-//   'ROG.VX'    → 'chf'
-//   'VUSA.AS'   → 'eur'
-//   'DBK.DE'    → 'eur'
-//   'SHEL.L'    → 'gbp'
-//   '7203.T'    → 'jpy'
-//   '0700.HK'   → 'hkd'
-//   '600519.SS' → 'cny'
-//   '000858.SZ' → 'cny'
-//   'AAPL.XX'   → null   (suffixe non géré)
-//   ''          → null
-//   null        → null
-//   '.PA'       → 'eur'  (cas limite : préfixe vide, suffixe valide)
-function getCurrencyFromTicker(ticker){
-  if(ticker==null||typeof ticker!=='string')return null;
+// isValidCtoTicker — validation syntaxique d'un ticker Yahoo Finance (CTO)
+// La devise n'est plus déduite du ticker : elle vient de fast_info.currency (sync)
+// ou du dropdown (CTO Sales). Cette fonction ne fait QUE valider le suffixe.
+//   'AAPL'      → true   (pas de point → US)
+//   'CW8.PA'    → true
+//   'NESN.SW'   → true
+//   'SHEL.L'    → true
+//   '7203.T'    → true
+//   '0700.HK'   → true
+//   '600519.SS' → true
+//   'AAPL.XX'   → false  (suffixe non géré)
+//   ''          → false
+//   null        → false
+function isValidCtoTicker(ticker){
+  if(ticker==null||typeof ticker!=='string')return false;
   const t=ticker.trim();
-  if(!t)return null;
+  if(!t)return false;
   const dot=t.lastIndexOf('.');
-  if(dot===-1)return 'usd';
+  if(dot===-1)return true;
   const suffix=t.slice(dot+1).toUpperCase();
-  const EUR_SUFFIXES=['PA','AS','DE','F','MI','BR','LS','MC'];
-  const CHF_SUFFIXES=['SW','VX'];
-  const GBP_SUFFIXES=['L'];
-  const JPY_SUFFIXES=['T'];
-  const HKD_SUFFIXES=['HK'];
-  const CNY_SUFFIXES=['SS','SZ'];
-  if(EUR_SUFFIXES.includes(suffix))return 'eur';
-  if(CHF_SUFFIXES.includes(suffix))return 'chf';
-  if(GBP_SUFFIXES.includes(suffix))return 'gbp';
-  if(JPY_SUFFIXES.includes(suffix))return 'jpy';
-  if(HKD_SUFFIXES.includes(suffix))return 'hkd';
-  if(CNY_SUFFIXES.includes(suffix))return 'cny';
-  return null;
+  const KNOWN_SUFFIXES=['PA','AS','DE','F','MI','BR','LS','MC','SW','VX','L','T','HK','SS','SZ'];
+  return KNOWN_SUFFIXES.includes(suffix);
 }
 // parseCryptoTicker — cas de test
 //   'bitcoin:usd'    → {id:'bitcoin', currency:'usd'}
@@ -341,7 +326,7 @@ function toggleExp(k){expanded[k]=!expanded[k];render();}
 // Pie
 function makePie(items,vk,lk,title){
   const f=items.filter(x=>x[vk]>0);
-  if(!f.length) return `<div class="card" style="flex:1 1 230px"><h3>${title}</h3>
+  if(!f.length) return `<div class="card" style="flex:1 1 340px"><h3>${title}</h3>
     <p style="color:var(--text2);font-size:12px">No data</p></div>`;
   const tot=f.reduce((s,x)=>s+x[vk],0); let cum=0;
   const r=66,cx=84,cy=84;
@@ -360,12 +345,12 @@ function makePie(items,vk,lk,title){
     }).join('');
   const leg=f.map((x,i)=>`<div style="display:flex;align-items:center;gap:5px;margin:2px 0">
     <span style="width:9px;height:9px;border-radius:2px;background:${COLORS[i%8]};flex-shrink:0;display:inline-block"></span>
-    <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x[lk]}</span>
-    <span style="font-size:10px;color:var(--text2);font-family:monospace">${fmt(x[vk])}</span>
+    <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x[lk]}</span>
+    <span style="font-size:12px;color:var(--text2);font-family:monospace">${fmt(x[vk])}</span>
   </div>`).join('');
-  return`<div class="card" style="flex:1 1 230px"><h3>${title}</h3>
+  return`<div class="card" style="flex:1 1 340px"><h3>${title}</h3>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <svg viewBox="0 0 168 168" width="136" height="136">${slices}</svg>
+      <svg viewBox="0 0 168 168" width="260" height="260">${slices}</svg>
       <div style="flex:1;min-width:100px">${leg}</div>
     </div></div>`;
 }
@@ -375,30 +360,55 @@ function convertHistoRow(h,amount){
   if(h.fxRate==null||h.fxRateSource==='ko')return null;
   return amount*h.fxRate;
 }
+function niceMax(val){
+  const mag=Math.pow(10,Math.floor(Math.log10(val)));
+  for(const m of [1,2,2.5,5,10]){if(m*mag>=val)return m*mag;}
+}
+function chartTipShow(evt,year,val){
+  const t=document.getElementById('chart-tooltip');
+  t.textContent=year+' — '+val;
+  t.style.display='block';
+  chartTipMove(evt);
+}
+function chartTipMove(evt){
+  const t=document.getElementById('chart-tooltip');
+  const x=evt.clientX,y=evt.clientY;
+  const tw=t.offsetWidth,th=t.offsetHeight;
+  t.style.left=(x+12+tw>window.innerWidth?x-tw-12:x+12)+'px';
+  t.style.top=(y-th-8)+'px';
+}
+function chartTipHide(){
+  document.getElementById('chart-tooltip').style.display='none';
+}
 
 function lineChart(hist){
   const displayCur=getCur().code;
   const curSym={eur:'€',usd:'$',chf:'CHF',gbp:'£',jpy:'¥',hkd:'HK$',cny:'CN¥'}[displayCur]||'€';
   const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convertHistoRow(h,h.total)})).filter(h=>h.total!=null&&h.total>0);
   if(pts.length<2) return '<p style="color:var(--text2);font-size:12px;padding:8px 0">At least 2 years of data required.</p>';
-  const scroll=pts.length>15;
-  const W=Math.max(500,pts.length*80),H=175,PL=60,PR=20,PT=22,PB=30;
+  const W=900,H=175,PL=60,PR=20,PT=22,PB=30;
   const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
-  const vs=pts.map(p=>p.total),mn=Math.min(...vs),mx=Math.max(...vs),rng=mx-mn||1;
-  const ys=vs.map(v=>PT+(H-PT-PB)*(1-(v-mn)/rng));
+  const vs=pts.map(p=>p.total);
+  const dataMax=Math.max(...vs),dataMin=Math.min(...vs);
+  const yMax=niceMax(dataMax);
+  const ys=vs.map(v=>PT+(H-PT-PB)*(1-v/yMax));
   const pD=xs.map((x,i)=>(i?'L':'M')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
   const fD=pD+` L${xs[xs.length-1].toFixed(1)},${H-PB} L${xs[0].toFixed(1)},${H-PB} Z`;
-  const grid=[0,.5,1].map(t=>{
-    const v=mn+t*rng,y=(PT+(H-PT-PB)*(1-t)).toFixed(1);
+  const ticks=[0,.25,.5,.75,1].map(t=>Math.round(yMax*t));
+  const grid=ticks.map(v=>{
+    const y=(PT+(H-PT-PB)*(1-v/yMax)).toFixed(1);
     return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>
-      <text x="${PL-6}" y="${(+y+4).toFixed(0)}" text-anchor="end" font-size="9" fill="var(--text2)">${Math.round(v).toLocaleString('en-US')} ${curSym}</text>`;
+      <text x="${PL-6}" y="${(+y+4).toFixed(0)}" text-anchor="end" font-size="9" fill="var(--text2)">${v.toLocaleString('en-US')} ${curSym}</text>`;
   }).join('');
+  const maxI=vs.indexOf(dataMax),minI=vs.indexOf(dataMin);
+  const labelIdx=new Set([0,pts.length-1,maxI,minI]);
+  const fmtVal=v=>Math.round(v).toLocaleString('en-US')+' '+curSym;
   const dots=xs.map((x,i)=>
-    `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>
+    `<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2" onmouseover="chartTipShow(event,${pts[i].year},'${fmtVal(pts[i].total)}')" onmousemove="chartTipMove(event)" onmouseout="chartTipHide()"/>
      <text x="${x.toFixed(1)}" y="${H-PB+13}" text-anchor="middle" font-size="9" fill="var(--text2)">${pts[i].year}</text>
-     <text x="${x.toFixed(1)}" y="${(ys[i]-9).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--accent)" font-weight="600">${Math.round(pts[i].total).toLocaleString('en-US')} ${curSym}</text>`
+     ${labelIdx.has(i)?`<text x="${x.toFixed(1)}" y="${(ys[i]-9).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--accent)" font-weight="600">${fmtVal(pts[i].total)}</text>`:''}`
   ).join('');
-  const svgStyle=scroll?`width:${W}px;display:block`:`width:100%;display:block`;
+  const svgStyle=`width:100%;display:block`;
   const svg=`<svg viewBox="0 0 ${W} ${H}" style="${svgStyle}">
     <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
@@ -411,7 +421,7 @@ function lineChart(hist){
     <path d="${pD}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
   </svg>`;
-  return scroll?`<div style="overflow-x:auto">${svg}</div>`:svg;
+  return svg;
 }
 function setChartFilter(f){dashChartFilter=f;render();}
 
@@ -495,8 +505,8 @@ function renderInfo(){
     <p style="color:var(--text2);margin-top:4px;margin-bottom:24px;font-size:13px">Local investment tracker</p>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v1.0</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/05/31</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>Carpe Diem</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/06/13</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>CarpeDiem</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:10px;font-weight:600">Documentation</label>
@@ -640,8 +650,8 @@ function renderDash(){
   }).join('');
   return`<div class="kpis">
     <div class="kpi">
-      <div class="kpi-label">Total valuation (${displayCur.toUpperCase()})</div>
-      <div class="kpi-value" style="color:var(--accent)">${fmt(totV)}</div>
+      <div class="kpi-label" style="font-size:12px">Total valuation (${displayCur.toUpperCase()})</div>
+      <div class="kpi-value" style="color:var(--accent);font-size:21px">${fmt(totV)}</div>
     </div>
     ${excludedCount?`<div class="kpi" style="border-color:#92400e">
       <div class="kpi-label" style="color:#f59e0b">⚠️ Excluded positions</div>
@@ -650,9 +660,7 @@ function renderDash(){
   </div>
   ${!hasFx&&hasTrades?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
     ⚠️ Exchange rates not loaded — run a sync to enable currency conversion.
-  </div>`:`<div style="font-size:10px;color:var(--text2);margin-bottom:10px;padding:0 2px">
-    💱 Valuations converted at today's rate — P&L and invested shown per currency in each tab.
-  </div>`}
+  </div>`:''}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
     ${makePie(cls,'valo','name','Asset class')}
@@ -693,7 +701,7 @@ function renderSpot(type){
   },0);
   const totGP=totV-totI;
   const cols=isCto?18:15;
-  const colgroupSpot=makeColgroup(isCto?[2,11,7,7,8,7,4,5,7,7,10,3,7,7,5,7,5,3]:[2,14,9,5,6,8,8,12,3,7,8,6,8,5,3]);
+  const colgroupSpot=makeColgroup(isCto?[2,9,8,7,8,8,4,5,7,7,10,3,7,7,5,7,5,3]:[2,10,10,5,6,9,9,11,3,7,9,6,9,5,3]);
   const colgroupSub=makeColgroup([22,12,16,12,18,16,4]);
   let rows='';
   calcs.forEach(p=>{
@@ -768,7 +776,7 @@ function renderSpot(type){
     :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync Crypto prices</button>`;
   const hdrs=`<th></th><th>Nom</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
     ${isCto?'<th>Broker</th><th>Class</th>':''}
-    <th>Currency</th>
+    <th>CCY</th>
     <th class="r computed">Qty ←</th><th class="r computed">Avg cost ←</th><th class="r computed">Invested ←</th>
     <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
     <th class="r">P&L</th><th class="r">Weight</th><th></th>`;
@@ -889,10 +897,12 @@ function renderES(type){
     <!-- DÉNOMINATION -->
     <td><input value="${t.name||''}" onchange="upTrade('${key}',${t.id},'name',this.value)"></td>
     ${isCto?`<td><input value="${t.isin||''}" onchange="upTrade('${key}',${t.id},'isin',this.value)"></td>`:''}
-    <td><input value="${t.ticker||''}" placeholder="${isCto?'ex: CW8.PA':'ex: bitcoin:usd'}"
+    ${isCto?`<td><input value="${t.ticker||''}" placeholder="ex: CW8.PA"
       onchange="upTradeTicker('${key}',${t.id},this.value)"
-      onclick="event.stopPropagation()"></td>
-    <td>${t.currency?t.currency.toUpperCase():'—'}</td>
+      onclick="event.stopPropagation()"></td>`:''}
+    <td onclick="event.stopPropagation()"><select onchange="upTradeCurrency('${key}',${t.id},this.value)">
+      ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(t.currency||'')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
+    </select></td>
     <!-- ACHAT -->
     <td style="border-left:2px solid var(--accent)">
       <input type="date" value="${t.buyDate||''}" onchange="upTrade('${key}',${t.id},'buyDate',this.value)">
@@ -900,7 +910,7 @@ function renderES(type){
     <td class="r"><input type="number" step="any" value="${t.priceBuy||''}" onchange="upTrade('${key}',${t.id},'priceBuy',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.feesBuy||''}" onchange="upTrade('${key}',${t.id},'feesBuy',this.value)"></td>
     <td class="${fxBg(t.fxRateBuySource)}" style="font-size:12px">
-      ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(4):'—'}
+      ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(2):'—'}
     </td>
     <td class="btn-col">
       <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'buy')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
@@ -913,7 +923,7 @@ function renderES(type){
     <td class="r"><input type="number" step="any" value="${t.priceSell||''}" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.feesSell||''}" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
     <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px">
-      ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(4):'—'}
+      ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(2):'—'}
     </td>
     <td class="btn-col">
       <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'sell')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
@@ -926,7 +936,7 @@ function renderES(type){
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[5,5,5,3,9,5,4,6,3,9,4,5,4,6,3,7,6,5,3,3]:[7,6,3,9,4,4,6,3,9,4,4,4,6,3,8,7,7,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,3,8,5,5,4,4,3,7,6,5,3,3]:[9,4,8,6,5,5,3,8,4,6,5,5,3,8,8,7,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 Securities Sales':'📋 Crypto Sales'}</h3>
     <div class="kpis">
@@ -946,7 +956,7 @@ function renderES(type){
     </div>
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroup}<thead>
     <tr>
-      <th colspan="${isCto?4:3}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
+      <th colspan="${isCto?4:2}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
       <th colspan="5" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Buy</th>
       <th colspan="6" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
       <th colspan="4" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Total</th>
@@ -955,8 +965,8 @@ function renderES(type){
     <tr>
       <th>Name</th>
       ${isCto?'<th>ISIN</th>':''}
-      <th>Ticker</th>
-      <th>Currency</th>
+      ${isCto?'<th>Ticker</th>':''}
+      <th>CCY</th>
       <th style="border-left:2px solid var(--accent)">Buy date</th>
       <th class="r">Unit price</th>
       <th class="r">Fees B</th>
@@ -981,7 +991,7 @@ function renderES(type){
 // Historique
 function renderHisto(){
   const currentYear=new Date().getFullYear();
-  const colgroupHisto=makeColgroup([5,5,14,3,10,10,10,3]);
+  const colgroupHisto=makeColgroup([5,7,12,3,10,10,10,3]);
   const displayHist=DATA.historique.map((h,i)=>({h,i})).sort((a,b)=>histoSortAsc?a.h.year-b.h.year:b.h.year-a.h.year);
   let rows=displayHist.map(({h,i})=>`<tr>
     <td class="mono"><input type="number" step="any" value="${h.year||''}" onchange="upHisto(${i},'year',this.value)"></td>
@@ -989,7 +999,7 @@ function renderHisto(){
       ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(h.currency||'eur')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
     </select></td>
     <td class="${histoFxBg(h.fxRateSource)}" style="font-size:12px">
-      ${histoFxIco(h.fxRateSource)} ${h.fxRate!=null?h.fxRate.toFixed(4):'—'}
+      ${histoFxIco(h.fxRateSource)} ${h.fxRate!=null?h.fxRate.toFixed(2):'—'}
       ${h.year===currentYear?`<br><span style="font-size:9px;color:#f59e0b">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
     </td>
     <td class="btn-col">
@@ -1023,12 +1033,11 @@ function upCtoTicker(id,newTicker){
     DATA.cto=DATA.cto.map(p=>p.id===id?{...p,ticker:'',currency:null,livePrice:null,priceSource:'none',priceDate:null}:p);
     saveData();render();return;
   }
-  const currency=getCurrencyFromTicker(t);
-  if(currency===null){
+  if(!isValidCtoTicker(t)){
     toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
     render();return;
   }
-  DATA.cto=DATA.cto.map(p=>p.id===id?{...p,ticker:t,currency,livePrice:null,priceSource:'none',priceDate:null}:p);
+  DATA.cto=DATA.cto.map(p=>p.id===id?{...p,ticker:t,currency:null,livePrice:null,priceSource:'none',priceDate:null}:p);
   saveData();render();
 }
 function upCryptoTicker(id,newTicker){
@@ -1105,9 +1114,22 @@ function delPurch(type,pid,i){
 function addTrade(key){
   DATA[key].push({id:nextId(DATA[key]),sellDate:'',name:'',isin:'',
     qSold:0,priceSell:0,feesSell:0,buyDate:'',priceBuy:0,feesBuy:0,
-    ticker:'',currency:null,
+    ...(key==='ctoTrades'?{ticker:''}:{}),
+    currency:DATA.settings?.currency||'eur',
     fxRateBuy:null,fxRateBuySource:null,
     fxRateSell:null,fxRateSellSource:null});
+  saveData();render();
+}
+function upTradeCurrency(key,id,newCurrency){
+  const t=DATA[key].find(x=>x.id===id);
+  if(!t||(t.currency||'')===newCurrency)return;
+  DATA[key]=DATA[key].map(x=>{
+    if(x.id!==id)return x;
+    const updated={...x,currency:newCurrency};
+    invalidateFxSource(updated,'fxRateBuySource');
+    invalidateFxSource(updated,'fxRateSellSource');
+    return updated;
+  });
   saveData();render();
 }
 function upTrade(key,id,f,v){
@@ -1126,41 +1148,15 @@ function upTradeTicker(key,id,newTicker){
   const old=(DATA[key].find(x=>x.id===id)||{}).ticker||'';
   if(t===old)return;
   if(!t){
-    DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:'',currency:null,fxRateBuy:null,fxRateBuySource:null,fxRateSell:null,fxRateSellSource:null}:x);
+    DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:''}:x);
     saveData();render();return;
   }
-  const isCto=key==='ctoTrades';
-  let currency;
-  if(isCto){
-    currency=getCurrencyFromTicker(t);
-  }else{
-    const result=parseCryptoTicker(t);
-    currency=result?.currency;
-  }
-  if(currency==null){
-    if(isCto){
-      toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
-    }else{
-      toast('❌ Crypto ticker rejected. Expected format: id:currency (e.g. bitcoin:usd). Accepted currencies: eur, usd, chf, gbp, jpy, hkd, cny.','#7f1d1d');
-    }
+  if(!isValidCtoTicker(t)){
+    toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
     render();return;
   }
-  const oldCurrency=(DATA[key].find(x=>x.id===id)||{}).currency;
-  const optionsCur=DATA.settings?.currency||'eur';
-  DATA[key]=DATA[key].map(x=>{
-    if(x.id!==id)return x;
-    const updates={...x,ticker:t,currency};
-    if(currency!==oldCurrency){
-      if(currency===optionsCur){
-        invalidateFxSource(updates,'fxRateBuySource' ,'auto'); if(updates.fxRateBuySource ==='auto') updates.fxRateBuy =1;
-        invalidateFxSource(updates,'fxRateSellSource','auto'); if(updates.fxRateSellSource==='auto') updates.fxRateSell=1;
-      }else{
-        invalidateFxSource(updates,'fxRateBuySource');
-        invalidateFxSource(updates,'fxRateSellSource');
-      }
-    }
-    return updates;
-  });
+  // Ticker et devise sont indépendants pour les CTO Sales : la devise n'est pas touchée.
+  DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:t}:x);
   saveData();render();
 }
 async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
@@ -1190,4 +1186,5 @@ function exportZIP(){
   document.body.removeChild(a);
 }
 
+if(!document.getElementById('chart-tooltip'))document.body.insertAdjacentHTML('beforeend','<div id="chart-tooltip"></div>');
 loadData();
