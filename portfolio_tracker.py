@@ -516,6 +516,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for pos in positions:
                 calc  = calc_pos(pos)
                 ident = {k: pos.get(k, E) for k in id_fields}
+                if 'classe' in ident:
+                    ident['class'] = ident.pop('classe')
 
                 # repartition_pct : uniquement si totI > 0 et livePrice présent
                 if totI and pos.get('livePrice'):
@@ -530,17 +532,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "row_type":               "position",
                     "qty_total":              calc['tq'],
                     "wac":                    calc['wac'],
-                    "total_investi":          calc['ti'],
+                    "total_invested":         calc['ti'],
                     "live_price":             calc['live']  if calc['live']  is not None else E,
-                    "valo":                   calc['valo']  if calc['valo']  is not None else E,
-                    "evol_pct":               calc['evol']  if calc['evol']  is not None else E,
-                    "gp":                     calc['gp']    if calc['gp']    is not None else E,
-                    "repartition_pct":        rep,
+                    "valuation":              calc['valo']  if calc['valo']  is not None else E,
+                    "change_pct":             calc['evol']  if calc['evol']  is not None else E,
+                    "pnl":                    calc['gp']    if calc['gp']    is not None else E,
+                    "weight_pct":             rep,
                     "price_source":           pos.get('priceSource', E),
                     "price_date":             pos.get('priceDate',   E),
                     "purchase_date":          E, "purchase_qty":            E,
                     "purchase_price":         E, "purchase_fees":           E,
-                    "purchase_total_investi": E, "purchase_lot_avg_cost":        E,
+                    "purchase_total_invested": E, "purchase_lot_avg_cost":        E,
                 })
 
                 # Lignes "achat" (une par entrée purchases)
@@ -552,17 +554,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     lot_avg_cost = round(pu_ti / qty, 2) if qty else E
                     rows.append({
                         **ident,
-                        "row_type":               "achat",
+                        "row_type":               "purchase",
                         "qty_total":              E, "wac":             E,
-                        "total_investi":          E, "live_price":      E,
-                        "valo":                   E, "evol_pct":        E,
-                        "gp":                     E, "repartition_pct": E,
+                        "total_invested":         E, "live_price":      E,
+                        "valuation":              E, "change_pct":      E,
+                        "pnl":                    E, "weight_pct":      E,
                         "price_source":           E, "price_date":      E,
                         "purchase_date":          pu.get('date',  E),
                         "purchase_qty":           pu.get('qty',   E),
                         "purchase_price":         pu.get('price', E),
                         "purchase_fees":          pu.get('fees',  E),
-                        "purchase_total_investi": pu_ti,
+                        "purchase_total_invested": pu_ti,
                         "purchase_lot_avg_cost":       lot_avg_cost,
                     })
 
@@ -576,11 +578,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # ── 1. CTO live ───────────────────────────────────────────────────────
         HEADERS_CTO_LIVE = [
-            "row_type", "id", "name", "ticker", "isin", "broker", "classe", "currency",
-            "qty_total", "wac", "total_investi", "live_price", "valo", "evol_pct", "gp",
-            "repartition_pct", "price_source", "price_date",
+            "row_type", "id", "name", "isin", "ticker", "broker", "class", "currency",
+            "qty_total", "wac", "total_invested", "live_price", "valuation", "change_pct", "pnl",
+            "weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
-            "purchase_total_investi", "purchase_lot_avg_cost",
+            "purchase_total_invested", "purchase_lot_avg_cost",
         ]
         CTO_ID = ["id", "name", "ticker", "isin", "broker", "classe", "currency"]
         cto_live_rows = build_live_rows(data.get('cto', []), CTO_ID, HEADERS_CTO_LIVE)
@@ -588,28 +590,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # ── 2. Crypto live ────────────────────────────────────────────────────
         HEADERS_CRYPTO_LIVE = [
             "row_type", "id", "name", "ticker", "currency",
-            "qty_total", "wac", "total_investi", "live_price", "valo", "evol_pct", "gp",
-            "repartition_pct", "price_source", "price_date",
+            "qty_total", "wac", "total_invested", "live_price", "valuation", "change_pct", "pnl",
+            "weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
-            "purchase_total_investi", "purchase_lot_avg_cost",
+            "purchase_total_invested", "purchase_lot_avg_cost",
         ]
         CRYPTO_ID = ["id", "name", "ticker", "currency"]
         crypto_live_rows = build_live_rows(data.get('crypto', []), CRYPTO_ID, HEADERS_CRYPTO_LIVE)
 
         # ── 3 & 4. Sorties CTO + Crypto (qBought exclu ; isin absent de crypto) ──
+        CCY = display_cur.upper()
+        SORTIES_OPT_HEADERS = [f"total_buy_{CCY}", f"total_sell_{CCY}", f"pnl_{CCY}", "pnl_pct"]
+
+        def calc_sortie_opts(t):
+            """Total B/S + P&L en devise Options, et P&L % aligné sur fmtP (ratio*100, 1 déc.)."""
+            q_sold, price_buy, price_sell = t.get('qSold') or 0, t.get('priceBuy') or 0, t.get('priceSell') or 0
+            fees_buy, fees_sell = t.get('feesBuy') or 0, t.get('feesSell') or 0
+            ts = q_sold * price_sell - fees_sell
+            tb = q_sold * price_buy + fees_buy
+            pct = round((ts - tb) / tb * 100, 1) if tb > 0 else 0
+            fx_buy, fx_sell = t.get('fxRateBuy'), t.get('fxRateSell')
+            if fx_buy is not None and fx_sell is not None:
+                total_buy  = round(tb * fx_buy, 2)
+                total_sell = round(ts * fx_sell, 2)
+                pnl        = round(total_sell - total_buy, 2)
+            else:
+                total_buy = total_sell = pnl = ""
+            return {f"total_buy_{CCY}": total_buy, f"total_sell_{CCY}": total_sell,
+                    f"pnl_{CCY}": pnl, "pnl_pct": pct}
+
         HEADERS_CTO_SORTIES = [
             "id", "name", "ticker", "isin", "currency",
             "buyDate", "priceBuy", "feesBuy", "fxRateBuy", "fxRateBuySource",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
-        ]
+        ] + SORTIES_OPT_HEADERS
         HEADERS_CRYPTO_SORTIES = [
             "id", "name", "currency",
             "buyDate", "priceBuy", "feesBuy", "fxRateBuy", "fxRateBuySource",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
-        ]
-        cto_sorties_rows    = [{k: t.get(k, "") for k in HEADERS_CTO_SORTIES}
+        ] + SORTIES_OPT_HEADERS
+        cto_sorties_rows    = [{**{k: t.get(k, "") for k in HEADERS_CTO_SORTIES}, **calc_sortie_opts(t)}
                                for t in data.get('ctoTrades', [])]
-        crypto_sorties_rows = [{k: t.get(k, "") for k in HEADERS_CRYPTO_SORTIES}
+        crypto_sorties_rows = [{**{k: t.get(k, "") for k in HEADERS_CRYPTO_SORTIES}, **calc_sortie_opts(t)}
                                for t in data.get('cryptoTrades', [])]
 
         # ── 5. Historique ─────────────────────────────────────────────────────
@@ -633,14 +655,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 row[f"class_{k}"] = classes.get(k, "")
             histo_rows.append(row)
 
+        # ── 6. Summary (KPIs consolidés, devise Options) ─────────────────────────
+        def consolidated_totals(positions):
+            """Σ convert_fx(ti/valo) sur positions livePrice + convertibles (cf. doc §12.4)."""
+            inv = val = 0.0
+            for pos in positions:
+                if not pos.get('livePrice'):
+                    continue
+                c  = calc_pos(pos)
+                vi = convert_fx(c['ti'],   pos.get('currency', ''), display_cur, fx)
+                vv = convert_fx(c['valo'], pos.get('currency', ''), display_cur, fx)
+                if vi is not None: inv += vi
+                if vv is not None: val += vv
+            return round(inv, 2), round(val, 2)
+
+        def realized_pnl(trades):
+            """Σ pnl_<CCY> (= gpOpt) des cessions avec fxRateBuy et fxRateSell non null (doc §12.7)."""
+            total = sum(calc_sortie_opts(t)[f"pnl_{CCY}"]
+                         for t in trades
+                         if t.get('fxRateBuy') is not None and t.get('fxRateSell') is not None)
+            return round(total, 2)
+
+        sec_inv, sec_val = consolidated_totals(data.get('cto', []))
+        cry_inv, cry_val = consolidated_totals(data.get('crypto', []))
+
+        HEADERS_SUMMARY = ["metric", "value", "currency"]
+        summary_rows = [
+            {"metric": "total_valuation",        "value": round(sec_val + cry_val, 2),               "currency": CCY},
+            {"metric": "securities_invested",     "value": sec_inv,                                    "currency": CCY},
+            {"metric": "securities_valuation",    "value": sec_val,                                    "currency": CCY},
+            {"metric": "securities_pnl",          "value": round(sec_val - sec_inv, 2),               "currency": CCY},
+            {"metric": "securities_realized_pnl", "value": realized_pnl(data.get('ctoTrades', [])),   "currency": CCY},
+            {"metric": "cryptos_invested",        "value": cry_inv,                                    "currency": CCY},
+            {"metric": "cryptos_valuation",       "value": cry_val,                                    "currency": CCY},
+            {"metric": "cryptos_pnl",             "value": round(cry_val - cry_inv, 2),               "currency": CCY},
+            {"metric": "cryptos_realized_pnl",    "value": realized_pnl(data.get('cryptoTrades', [])),"currency": CCY},
+        ]
+
         # ── Assemblage ZIP ────────────────────────────────────────────────────
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("cto_live.csv",       make_csv(HEADERS_CTO_LIVE,    cto_live_rows))
-            zf.writestr("crypto_live.csv",    make_csv(HEADERS_CRYPTO_LIVE, crypto_live_rows))
-            zf.writestr("cto_sorties.csv",    make_csv(HEADERS_CTO_SORTIES,    cto_sorties_rows))
-            zf.writestr("crypto_sorties.csv", make_csv(HEADERS_CRYPTO_SORTIES, crypto_sorties_rows))
-            zf.writestr("historique.csv",     make_csv(HEADERS_HISTO,       histo_rows))
+            zf.writestr("securities_live.csv",  make_csv(HEADERS_CTO_LIVE,    cto_live_rows))
+            zf.writestr("cryptos_live.csv",      make_csv(HEADERS_CRYPTO_LIVE, crypto_live_rows))
+            zf.writestr("securities_sales.csv", make_csv(HEADERS_CTO_SORTIES,    cto_sorties_rows))
+            zf.writestr("cryptos_sales.csv",    make_csv(HEADERS_CRYPTO_SORTIES, crypto_sorties_rows))
+            zf.writestr("history.csv",          make_csv(HEADERS_HISTO,       histo_rows))
+            zf.writestr("summary.csv",          make_csv(HEADERS_SUMMARY,      summary_rows))
 
         body = zip_buffer.getvalue()
         self.send_response(200)
