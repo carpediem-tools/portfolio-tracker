@@ -502,14 +502,12 @@ function renderOptions(){
 function renderInfo(){
   return`<div class="card">
     <h3>📊 Portfolio Tracker — V1.0</h3>
-    <p style="color:var(--text2);margin-top:4px;margin-bottom:24px;font-size:13px">Local investment tracker</p>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v1.0</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/06/13</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>CarpeDiem</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
-      <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:10px;font-weight:600">Documentation</label>
       <a href="/docs" target="_blank" class="btn btn-blue" style="font-size:13px;text-decoration:none;display:inline-block">📖 Open documentation</a>
     </div>
   </div>`;
@@ -774,7 +772,7 @@ function renderSpot(type){
   const syncBtn=isCto
     ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync Securities prices</button>`
     :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync Crypto prices</button>`;
-  const hdrs=`<th></th><th>Nom</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
+  const hdrs=`<th></th><th>Name</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
     ${isCto?'<th>Broker</th><th>Class</th>':''}
     <th>CCY</th>
     <th class="r computed">Qty ←</th><th class="r computed">Avg cost ←</th><th class="r computed">Invested ←</th>
@@ -936,7 +934,7 @@ function renderES(type){
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,3,8,5,5,4,4,3,7,6,5,3,3]:[9,4,8,6,5,5,3,8,4,6,5,5,3,8,8,7,3,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,3,8,4,5,4,4,3,7,6,5,4,3]:[8,4,8,6,5,5,3,8,4,6,5,5,3,8,8,7,4,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 Securities Sales':'📋 Crypto Sales'}</h3>
     <div class="kpis">
