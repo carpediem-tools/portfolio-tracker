@@ -354,7 +354,7 @@ li{margin:5px 0}
 </ul>
 
 <h3>Export CSV (ZIP)</h3>
-<p>Clicking <strong>Export</strong> generates an <code>export_YYYYMMDD.zip</code> file containing 5 timestamped CSV files. See <a href="#15-csv-export">section 15</a> for full details.</p>
+<p>Clicking <strong>Export</strong> generates an <code>export_YYYYMMDD.zip</code> file containing 6 timestamped CSV files. See <a href="#15-csv-export">section 15</a> for full details.</p>
 
 <hr>
 
@@ -1060,7 +1060,7 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
 <h2>15. CSV export</h2>
 
 <h3>Overview</h3>
-<p>The <strong>Export</strong> button in the Options tab generates a timestamped ZIP file (<code>export_YYYYMMDD.zip</code>) downloadable directly from the browser. The ZIP contains 5 CSV files, one per data type.</p>
+<p>The <strong>Export</strong> button in the Options tab generates a timestamped ZIP file (<code>export_YYYYMMDD.zip</code>) downloadable directly from the browser. The ZIP contains 6 CSV files, one per data type plus a consolidated summary.</p>
 
 <p>No external dependency: the export uses only the Python standard library (<code>csv</code>, <code>zipfile</code>, <code>io</code>).</p>
 
@@ -1069,33 +1069,37 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
 <table>
   <thead><tr><th>File</th><th>Content</th></tr></thead>
   <tbody>
-    <tr><td><code>cto_live.csv</code></td><td>Active CTO positions with individual purchase detail</td></tr>
-    <tr><td><code>crypto_live.csv</code></td><td>Active Crypto positions with individual purchase detail</td></tr>
-    <tr><td><code>cto_sorties.csv</code></td><td>CTO sales (realized trades)</td></tr>
-    <tr><td><code>crypto_sorties.csv</code></td><td>Crypto sales (realized trades)</td></tr>
-    <tr><td><code>historique.csv</code></td><td>Annual portfolio history</td></tr>
+    <tr><td><code>securities_live.csv</code></td><td>Active Securities positions with individual purchase detail</td></tr>
+    <tr><td><code>cryptos_live.csv</code></td><td>Active Crypto positions with individual purchase detail</td></tr>
+    <tr><td><code>securities_sales.csv</code></td><td>Securities sales (realized trades)</td></tr>
+    <tr><td><code>cryptos_sales.csv</code></td><td>Crypto sales (realized trades)</td></tr>
+    <tr><td><code>history.csv</code></td><td>Annual portfolio history</td></tr>
+    <tr><td><code>summary.csv</code></td><td>Consolidated KPIs across all tabs, in the Options currency</td></tr>
   </tbody>
 </table>
 
-<h3>Live file structure (CTO and Crypto)</h3>
+<h3>Live file structure (Securities and Crypto)</h3>
 
-<p>The <code>cto_live.csv</code> and <code>crypto_live.csv</code> files use a two-level row structure, identified by the <code>row_type</code> column:</p>
+<p>The <code>securities_live.csv</code> and <code>cryptos_live.csv</code> files use a two-level row structure, identified by the <code>row_type</code> column:</p>
 
 <table>
   <thead><tr><th><code>row_type</code> value</th><th>Meaning</th></tr></thead>
   <tbody>
-    <tr><td><code>position</code></td><td>Position summary row (overall WAC, valuation, P&amp;L, chg%, weight%)</td></tr>
-    <tr><td><code>achat</code></td><td>Individual purchase detail row</td></tr>
+    <tr><td><code>position</code></td><td>Position summary row (overall WAC, valuation, P&amp;L, change%, weight%)</td></tr>
+    <tr><td><code>purchase</code></td><td>Individual purchase detail row</td></tr>
+    <tr><td><em>(empty)</em></td><td>Separator row between positions (all cells empty, including <code>row_type</code>)</td></tr>
   </tbody>
 </table>
 
-<p>An empty row separates each position+purchases block in the CSV.</p>
-
 <blockquote><p><strong>Note:</strong> <code>live_price</code> is rounded to 2 decimal places in the export.</p></blockquote>
+
+<blockquote><p><strong>Percentage columns:</strong> <code>change_pct</code>, <code>weight_pct</code> and <code>pnl_pct</code> are stored as percentages (value already multiplied by 100) rounded to <strong>1 decimal place</strong> — e.g. <code>45.5</code>, <code>-17.9</code>, <code>25.6</code>. They are not raw ratios.</p></blockquote>
+
+<p>The columns follow the same left-to-right reading order as the UI: identity first, then base amounts (quantity, average cost, invested), then the live price, then the consolidated block (valuation, change, P&amp;L, weight), then price metadata, and finally the per-lot purchase detail.</p>
 
 <h3>Columns per file</h3>
 
-<p><strong><code>cto_live.csv</code></strong> — 24 columns</p>
+<p><strong><code>securities_live.csv</code></strong> — 24 columns</p>
 
 <table>
   <thead><tr><th>#</th><th>Column</th></tr></thead>
@@ -1103,31 +1107,31 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
     <tr><td>1</td><td><code>row_type</code></td></tr>
     <tr><td>2</td><td><code>id</code></td></tr>
     <tr><td>3</td><td><code>name</code></td></tr>
-    <tr><td>4</td><td><code>ticker</code></td></tr>
-    <tr><td>5</td><td><code>isin</code></td></tr>
+    <tr><td>4</td><td><code>isin</code></td></tr>
+    <tr><td>5</td><td><code>ticker</code></td></tr>
     <tr><td>6</td><td><code>broker</code></td></tr>
-    <tr><td>7</td><td><code>classe</code></td></tr>
+    <tr><td>7</td><td><code>class</code></td></tr>
     <tr><td>8</td><td><code>currency</code></td></tr>
     <tr><td>9</td><td><code>qty_total</code></td></tr>
     <tr><td>10</td><td><code>wac</code></td></tr>
-    <tr><td>11</td><td><code>total_investi</code></td></tr>
+    <tr><td>11</td><td><code>total_invested</code></td></tr>
     <tr><td>12</td><td><code>live_price</code></td></tr>
-    <tr><td>13</td><td><code>valo</code></td></tr>
-    <tr><td>14</td><td><code>evol_pct</code></td></tr>
-    <tr><td>15</td><td><code>gp</code></td></tr>
-    <tr><td>16</td><td><code>repartition_pct</code></td></tr>
+    <tr><td>13</td><td><code>valuation</code></td></tr>
+    <tr><td>14</td><td><code>change_pct</code></td></tr>
+    <tr><td>15</td><td><code>pnl</code></td></tr>
+    <tr><td>16</td><td><code>weight_pct</code></td></tr>
     <tr><td>17</td><td><code>price_source</code></td></tr>
     <tr><td>18</td><td><code>price_date</code></td></tr>
     <tr><td>19</td><td><code>purchase_date</code></td></tr>
     <tr><td>20</td><td><code>purchase_qty</code></td></tr>
     <tr><td>21</td><td><code>purchase_price</code></td></tr>
     <tr><td>22</td><td><code>purchase_fees</code></td></tr>
-    <tr><td>23</td><td><code>purchase_total_investi</code></td></tr>
+    <tr><td>23</td><td><code>purchase_total_invested</code></td></tr>
     <tr><td>24</td><td><code>purchase_lot_avg_cost</code></td></tr>
   </tbody>
 </table>
 
-<p><strong><code>crypto_live.csv</code></strong> — 21 columns</p>
+<p><strong><code>cryptos_live.csv</code></strong> — 21 columns</p>
 
 <table>
   <thead><tr><th>#</th><th>Column</th></tr></thead>
@@ -1139,24 +1143,30 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
     <tr><td>5</td><td><code>currency</code></td></tr>
     <tr><td>6</td><td><code>qty_total</code></td></tr>
     <tr><td>7</td><td><code>wac</code></td></tr>
-    <tr><td>8</td><td><code>total_investi</code></td></tr>
+    <tr><td>8</td><td><code>total_invested</code></td></tr>
     <tr><td>9</td><td><code>live_price</code></td></tr>
-    <tr><td>10</td><td><code>valo</code></td></tr>
-    <tr><td>11</td><td><code>evol_pct</code></td></tr>
-    <tr><td>12</td><td><code>gp</code></td></tr>
-    <tr><td>13</td><td><code>repartition_pct</code></td></tr>
+    <tr><td>10</td><td><code>valuation</code></td></tr>
+    <tr><td>11</td><td><code>change_pct</code></td></tr>
+    <tr><td>12</td><td><code>pnl</code></td></tr>
+    <tr><td>13</td><td><code>weight_pct</code></td></tr>
     <tr><td>14</td><td><code>price_source</code></td></tr>
     <tr><td>15</td><td><code>price_date</code></td></tr>
     <tr><td>16</td><td><code>purchase_date</code></td></tr>
     <tr><td>17</td><td><code>purchase_qty</code></td></tr>
     <tr><td>18</td><td><code>purchase_price</code></td></tr>
     <tr><td>19</td><td><code>purchase_fees</code></td></tr>
-    <tr><td>20</td><td><code>purchase_total_investi</code></td></tr>
+    <tr><td>20</td><td><code>purchase_total_invested</code></td></tr>
     <tr><td>21</td><td><code>purchase_lot_avg_cost</code></td></tr>
   </tbody>
 </table>
 
-<p><strong><code>cto_sorties.csv</code></strong> — 16 columns</p>
+<h3>Sales file structure (Securities and Crypto)</h3>
+
+<p>The <code>securities_sales.csv</code> and <code>cryptos_sales.csv</code> files list one row per realized trade. The first columns hold the raw trade data (in native currency); the last four columns are <strong>computed at export time</strong> in the Options currency.</p>
+
+<blockquote><p><strong>Computed columns.</strong> <code>total_buy_&lt;CCY&gt;</code>, <code>total_sell_&lt;CCY&gt;</code> and <code>pnl_&lt;CCY&gt;</code> carry the Options currency code in uppercase (e.g. <code>total_buy_EUR</code> when the Options currency is EUR). They are expressed in the Options currency using the fixed FX rates of each transaction (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>). When either <code>fxRateBuy</code> or <code>fxRateSell</code> is missing, these three cells are <strong>left empty</strong> — consistent with the <code>—</code> shown in the UI. <code>pnl_pct</code> has no currency suffix: it is a currency-agnostic ratio, expressed as a percentage rounded to 1 decimal place, and is always filled.</p></blockquote>
+
+<p><strong><code>securities_sales.csv</code></strong> — 20 columns (16 raw + 4 computed)</p>
 
 <table>
   <thead><tr><th>#</th><th>Column</th></tr></thead>
@@ -1177,33 +1187,42 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
     <tr><td>14</td><td><code>feesSell</code></td></tr>
     <tr><td>15</td><td><code>fxRateSell</code></td></tr>
     <tr><td>16</td><td><code>fxRateSellSource</code></td></tr>
+    <tr><td>17</td><td><code>total_buy_&lt;CCY&gt;</code></td></tr>
+    <tr><td>18</td><td><code>total_sell_&lt;CCY&gt;</code></td></tr>
+    <tr><td>19</td><td><code>pnl_&lt;CCY&gt;</code></td></tr>
+    <tr><td>20</td><td><code>pnl_pct</code></td></tr>
   </tbody>
 </table>
 
-<p><strong><code>crypto_sorties.csv</code></strong> — 15 columns</p>
+<p><strong><code>cryptos_sales.csv</code></strong> — 18 columns (14 raw + 4 computed)</p>
 
 <table>
   <thead><tr><th>#</th><th>Column</th></tr></thead>
   <tbody>
     <tr><td>1</td><td><code>id</code></td></tr>
     <tr><td>2</td><td><code>name</code></td></tr>
-    <tr><td>3</td><td><code>ticker</code></td></tr>
-    <tr><td>4</td><td><code>currency</code></td></tr>
-    <tr><td>5</td><td><code>buyDate</code></td></tr>
-    <tr><td>6</td><td><code>priceBuy</code></td></tr>
-    <tr><td>7</td><td><code>feesBuy</code></td></tr>
-    <tr><td>8</td><td><code>fxRateBuy</code></td></tr>
-    <tr><td>9</td><td><code>fxRateBuySource</code></td></tr>
-    <tr><td>10</td><td><code>sellDate</code></td></tr>
-    <tr><td>11</td><td><code>qSold</code></td></tr>
-    <tr><td>12</td><td><code>priceSell</code></td></tr>
-    <tr><td>13</td><td><code>feesSell</code></td></tr>
-    <tr><td>14</td><td><code>fxRateSell</code></td></tr>
-    <tr><td>15</td><td><code>fxRateSellSource</code></td></tr>
+    <tr><td>3</td><td><code>currency</code></td></tr>
+    <tr><td>4</td><td><code>buyDate</code></td></tr>
+    <tr><td>5</td><td><code>priceBuy</code></td></tr>
+    <tr><td>6</td><td><code>feesBuy</code></td></tr>
+    <tr><td>7</td><td><code>fxRateBuy</code></td></tr>
+    <tr><td>8</td><td><code>fxRateBuySource</code></td></tr>
+    <tr><td>9</td><td><code>sellDate</code></td></tr>
+    <tr><td>10</td><td><code>qSold</code></td></tr>
+    <tr><td>11</td><td><code>priceSell</code></td></tr>
+    <tr><td>12</td><td><code>feesSell</code></td></tr>
+    <tr><td>13</td><td><code>fxRateSell</code></td></tr>
+    <tr><td>14</td><td><code>fxRateSellSource</code></td></tr>
+    <tr><td>15</td><td><code>total_buy_&lt;CCY&gt;</code></td></tr>
+    <tr><td>16</td><td><code>total_sell_&lt;CCY&gt;</code></td></tr>
+    <tr><td>17</td><td><code>pnl_&lt;CCY&gt;</code></td></tr>
+    <tr><td>18</td><td><code>pnl_pct</code></td></tr>
   </tbody>
 </table>
 
-<p><strong><code>historique.csv</code></strong> — dynamic columns</p>
+<blockquote><p><strong>Note:</strong> <code>cryptos_sales.csv</code> has no <code>ticker</code> column — the crypto sale currency comes exclusively from the dropdown.</p></blockquote>
+
+<p><strong><code>history.csv</code></strong> — dynamic columns</p>
 
 <table>
   <thead><tr><th>#</th><th>Column</th></tr></thead>
@@ -1219,7 +1238,39 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
   </tbody>
 </table>
 
-<p><code>currency</code> is injected from the settings (<code>settings.currency</code>). The <code>class_&lt;key&gt;</code> columns are generated dynamically from the union of all <code>classes</code> keys present in the history, sorted alphabetically.</p>
+<p><code>currency</code> is injected from the settings (<code>settings.currency</code>). The <code>class_&lt;key&gt;</code> columns are generated dynamically from the union of all <code>classes</code> keys present across every history row, sorted alphabetically, and appended after the 7 fixed columns.</p>
+
+<p><strong><code>summary.csv</code></strong> — 3 columns, 9 rows</p>
+
+<p>Consolidated KPIs across all tabs, all expressed in the Options currency.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Column</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>metric</code></td></tr>
+    <tr><td>2</td><td><code>value</code></td></tr>
+    <tr><td>3</td><td><code>currency</code></td></tr>
+  </tbody>
+</table>
+
+<p>The <code>currency</code> column repeats the Options currency code in uppercase (e.g. <code>EUR</code>) on every row. The nine <code>metric</code> rows, in order:</p>
+
+<table>
+  <thead><tr><th><code>metric</code></th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>total_valuation</code></td><td>Dashboard total valuation (all live positions)</td></tr>
+    <tr><td><code>securities_invested</code></td><td>Securities tab — total invested</td></tr>
+    <tr><td><code>securities_valuation</code></td><td>Securities tab — total valuation</td></tr>
+    <tr><td><code>securities_pnl</code></td><td>Securities tab — P&amp;L</td></tr>
+    <tr><td><code>securities_realized_pnl</code></td><td>Securities Sales — realized P&amp;L</td></tr>
+    <tr><td><code>cryptos_invested</code></td><td>Cryptos tab — total invested</td></tr>
+    <tr><td><code>cryptos_valuation</code></td><td>Cryptos tab — total valuation</td></tr>
+    <tr><td><code>cryptos_pnl</code></td><td>Cryptos tab — P&amp;L</td></tr>
+    <tr><td><code>cryptos_realized_pnl</code></td><td>Crypto Sales — realized P&amp;L</td></tr>
+  </tbody>
+</table>
+
+<p><code>total_valuation</code> equals <code>securities_valuation + cryptos_valuation</code>. Each value is computed using the same conversion logic as the Dashboard and per-tab KPIs (see <a href="#12-calculations">section 12</a>): positions without a live price or without an available FX rate are excluded, and realized P&amp;L sums only the sales whose buy and sell FX rates are both available.</p>
 
 <hr>
 
