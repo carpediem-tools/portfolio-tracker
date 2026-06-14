@@ -15,6 +15,7 @@ let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorM
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
+let histoFocusIdx=null;
 let dashChartFilter='10Y';
 const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
@@ -319,34 +320,54 @@ function render(){
   else if(currentTab==='cryptoES') app.innerHTML=renderES('crypto');
   else if(currentTab==='info')     app.innerHTML=renderInfo();
   else app.innerHTML=renderHisto();
+  if(histoFocusIdx!==null){const inp=document.querySelector('[data-histo-new]');if(inp){inp.focus();histoFocusIdx=null;}}
 }
 function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
 function toggleExp(k){expanded[k]=!expanded[k];render();}
 
 // Pie
+const PIE_SMALL_PCT=0.02;
+// Groupe les tranches < 2% (>=2 -> "Others (N)") ou garantit un angle mini de 3° (1 seule)
+function groupPieSlices(f,vk,lk,tot){
+  const items=f.map(x=>({label:x[lk],value:x[vk],pct:x[vk]/tot}));
+  const small=items.filter(x=>x.pct<PIE_SMALL_PCT);
+  if(small.length>=2){
+    const big=items.filter(x=>x.pct>=PIE_SMALL_PCT);
+    const othersValue=small.reduce((s,x)=>s+x.value,0);
+    big.push({label:`Others (${small.length})`,value:othersValue,pct:othersValue/tot});
+    return big.map(x=>({...x,angle:x.pct*360}));
+  }
+  if(small.length===1){
+    const angleSmall=Math.max(small[0].pct*360,3);
+    const scale=(360-angleSmall)/(360-small[0].pct*360);
+    return items.map(x=>x===small[0]?{...x,angle:angleSmall}:{...x,angle:x.pct*360*scale});
+  }
+  return items.map(x=>({...x,angle:x.pct*360}));
+}
 function makePie(items,vk,lk,title){
   const f=items.filter(x=>x[vk]>0);
   if(!f.length) return `<div class="card" style="flex:1 1 340px"><h3>${title}</h3>
     <p style="color:var(--text2);font-size:12px">No data</p></div>`;
   const tot=f.reduce((s,x)=>s+x[vk],0); let cum=0;
   const r=66,cx=84,cy=84;
-  const slices=f.length===1
+  const sl=groupPieSlices(f,vk,lk,tot);
+  const slices=sl.length===1
     ?`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${COLORS[0]}" stroke="var(--bg)" stroke-width="2"/>
       <text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="9" fill="#fff">100%</text>`
-    :f.map((x,i)=>{
-      const pct=x[vk]/tot,a1=cum*Math.PI/180;cum+=pct*360;const a2=cum*Math.PI/180;
+    :sl.map((x,i)=>{
+      const a1=cum*Math.PI/180;cum+=x.angle;const a2=cum*Math.PI/180;
       const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
       const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
-      const mid=(cum-pct*180)*Math.PI/180;
+      const mid=(cum-x.angle/2)*Math.PI/180;
       const tx=(cx+43*Math.sin(mid)).toFixed(0),ty=(cy-43*Math.cos(mid)+4).toFixed(0);
-      return`<path d="M${cx},${cy}L${x1.toFixed(1)},${y1.toFixed(1)}A${r},${r} 0 ${pct>.5?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)}Z"
+      return`<path d="M${cx},${cy}L${x1.toFixed(1)},${y1.toFixed(1)}A${r},${r} 0 ${x.angle>180?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)}Z"
         fill="${COLORS[i%8]}" stroke="var(--bg)" stroke-width="2"/>
-        ${pct>.06?`<text x="${tx}" y="${ty}" text-anchor="middle" font-size="9" fill="#fff">${Math.round(pct*100)}%</text>`:''}`;
+        ${x.pct>.06?`<text x="${tx}" y="${ty}" text-anchor="middle" font-size="9" fill="#fff">${Math.round(x.pct*100)}%</text>`:''}`;
     }).join('');
-  const leg=f.map((x,i)=>`<div style="display:flex;align-items:center;gap:5px;margin:2px 0">
+  const leg=sl.map((x,i)=>`<div style="display:flex;align-items:center;gap:5px;margin:2px 0">
     <span style="width:9px;height:9px;border-radius:2px;background:${COLORS[i%8]};flex-shrink:0;display:inline-block"></span>
-    <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x[lk]}</span>
-    <span style="font-size:12px;color:var(--text2);font-family:monospace">${fmt(x[vk])}</span>
+    <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.label}</span>
+    <span style="font-size:12px;color:var(--text2);font-family:monospace">${fmt(x.value)}</span>
   </div>`).join('');
   return`<div class="card" style="flex:1 1 340px"><h3>${title}</h3>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -992,7 +1013,7 @@ function renderHisto(){
   const colgroupHisto=makeColgroup([5,7,12,3,10,10,10,3]);
   const displayHist=DATA.historique.map((h,i)=>({h,i})).sort((a,b)=>histoSortAsc?a.h.year-b.h.year:b.h.year-a.h.year);
   let rows=displayHist.map(({h,i})=>`<tr>
-    <td class="mono"><input type="number" step="any" value="${h.year||''}" onchange="upHisto(${i},'year',this.value)"></td>
+    <td class="mono"><input type="number" step="any" value="${h.year!=null?h.year:''}" onblur="upHisto(${i},'year',this.value,this)" onkeydown="if(event.key==='Enter')this.blur()"${i===histoFocusIdx?' data-histo-new':''}></td>
     <td><select onchange="upHisto(${i},'currency',this.value)">
       ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(h.currency||'eur')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
     </select></td>
@@ -1159,16 +1180,25 @@ function upTradeTicker(key,id,newTicker){
 }
 async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
 function addHisto(){
-  const y=DATA.historique.length?Math.max(...DATA.historique.map(h=>h.year))+1:new Date().getFullYear();
-  if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}
-  if(DATA.historique.some(h=>h.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}
-  DATA.historique.push({year:y,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
-  saveData();render();
+  if(DATA.historique.some(h=>h.year==null))return;
+  DATA.historique.push({year:null,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
+  histoFocusIdx=DATA.historique.length-1;
+  render();
 }
-function upHisto(i,f,v){
+function upHisto(i,f,v,el){
   const h=DATA.historique[i];
+  if(!h)return;
   if(f==='currency'){h.currency=v;invalidateFxSource(h,'fxRateSource');}
-  else if(f==='year'){const y=parseInt(v)||0;if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}if(DATA.historique.some((e,j)=>j!==i&&e.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}h.year=y;invalidateFxSource(h,'fxRateSource');}
+  else if(f==='year'){
+    const raw=String(v).trim();
+    if(raw===''){DATA.historique.splice(i,1);saveData();render();return;}
+    const y=parseInt(raw)||0;
+    if(y===h.year)return;
+    if(y<1900){toast("⚠️ That year? You definitely weren't born yet.",'#7f1d1d');if(el)setTimeout(()=>el.focus(),0);return;}
+    if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}
+    if(DATA.historique.some((e,j)=>j!==i&&e.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}
+    h.year=y;invalidateFxSource(h,'fxRateSource');
+  }
   else if(f==='crypto'){h.crypto=parseFloat(v)||0;}
   else if(f==='securities'){h.securities=parseFloat(v)||0;}
   h.total=(h.securities||0)+(h.crypto||0);
