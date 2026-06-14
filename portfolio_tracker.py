@@ -716,12 +716,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════╗")
-    print("║  📊 Portfolio Tracker — running locally         ║")
-    print(f"║  → http://localhost:{PORT}                        ║")
-    print(f"║  → Data file : {DATA_FILE.name}              ║")
-    print("║  For stock prices :                             ║")
-    print("║    pip install yfinance --break-system-packages ║")
-    print("║  Ctrl+C to quit                                 ║")
+    print("║  Portfolio Tracker — running locally             ║")
+    print("║  → http://localhost:8080                         ║")
+    print("║  → Data file : portfolio_data.json               ║")
+    print("║  For stock prices :                              ║")
+    print("║    pip install yfinance --break-system-packages  ║")
+    print("║  Ctrl+C to quit                                  ║")
     print("╚══════════════════════════════════════════════════╝")
     threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
     try:
