@@ -62,22 +62,40 @@ All external APIs are free, require no account and no subscription:
 
 ---
 
-## Requirements
+## Quick start
 
-- Python 3.13
-- `yfinance` library:
+### Linux / macOS
 
 ```bash
+git clone https://github.com/carpediem-tools/portfolio-tracker.git
+cd portfolio-tracker
+python3 -m venv venv
+source venv/bin/activate
 pip install yfinance
-# On Debian/Ubuntu: pip install yfinance --break-system-packages
+python3 portfolio_tracker.py
 ```
 
----
-
-## Usage
+For later runs, skip the install — just reactivate the environment and launch:
 
 ```bash
-python3 portfolio_tracker.py
+source venv/bin/activate && python3 portfolio_tracker.py
+```
+
+### Windows
+
+```cmd
+git clone https://github.com/carpediem-tools/portfolio-tracker.git
+cd portfolio-tracker
+python -m venv venv
+venv\Scripts\activate
+pip install yfinance
+python portfolio_tracker.py
+```
+
+For later runs, skip the install — just reactivate the environment and launch:
+
+```cmd
+venv\Scripts\activate && python portfolio_tracker.py
 ```
 
 Then the browser opens at `http://localhost:8080`.
