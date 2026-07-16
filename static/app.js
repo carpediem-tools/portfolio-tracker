@@ -781,7 +781,10 @@ function renderSpot(type){
       rows+=`<tr><td colspan="${cols}" style="padding:0;border:none"><div class="sub">
         <div class="sub-header">
           <span class="sub-title">Purchase detail — ${p.name||'(unnamed)'}</span>
-          <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Buy</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Buy</button>
+            ${c.tq>0?`<button class="btn btn-blue btn-sm" onclick="sellFromPos('${type}',${p.id})">- Sell</button>`:''}
+          </div>
         </div>
         <table class="resp-tbl" style="min-width:500px">${colgroupSub}<thead><tr>
           <th>Date</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Fees</th>
@@ -927,8 +930,8 @@ function renderES(type){
     <td style="border-left:2px solid var(--accent)">
       <input type="date" value="${t.buyDate||''}" onchange="upTrade('${key}',${t.id},'buyDate',this.value)">
     </td>
-    <td class="r"><input type="number" step="any" value="${t.priceBuy||''}" onchange="upTrade('${key}',${t.id},'priceBuy',this.value)"></td>
-    <td class="r"><input type="number" step="any" value="${t.feesBuy||''}" onchange="upTrade('${key}',${t.id},'feesBuy',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.priceBuy||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'priceBuy',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.feesBuy!=null?t.feesBuy:''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'feesBuy',this.value)"></td>
     <td class="${fxBg(t.fxRateBuySource)}" style="font-size:12px">
       ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(2):'—'}
     </td>
@@ -939,9 +942,9 @@ function renderES(type){
     <td style="border-left:2px solid var(--accent)">
       <input type="date" value="${t.sellDate||''}" onchange="upTrade('${key}',${t.id},'sellDate',this.value)">
     </td>
-    <td class="r"><input type="text" inputmode="decimal" class="qty-text" value="${t.qSold||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
-    <td class="r"><input type="number" step="any" value="${t.priceSell||''}" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
-    <td class="r"><input type="number" step="any" value="${t.feesSell||''}" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.qSold||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.priceSell||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.feesSell||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
     <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px">
       ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(2):'—'}
     </td>
@@ -1139,6 +1142,21 @@ function addTrade(key){
     fxRateBuy:null,fxRateBuySource:null,
     fxRateSell:null,fxRateSellSource:null});
   saveData();render();
+}
+function sellFromPos(type,id){
+  const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
+  const pos=DATA[type].find(p=>p.id===id);
+  if(!pos)return;
+  const c=calcPos(pos);
+  if(!(c.tq>0))return;
+  DATA[key].push({id:nextId(DATA[key]),sellDate:'',name:pos.name||'',isin:'',
+    qSold:c.tq,priceSell:0,feesSell:0,buyDate:'',priceBuy:Math.round(c.wac*1e8)/1e8,feesBuy:0,
+    ...(key==='ctoTrades'?{ticker:''}:{}),
+    currency:pos.currency||DATA.settings?.currency||'eur',
+    fxRateBuy:null,fxRateBuySource:null,
+    fxRateSell:null,fxRateSellSource:null});
+  saveData();
+  switchTab(isCto?'ctoES':'cryptoES');
 }
 function upTradeCurrency(key,id,newCurrency){
   const t=DATA[key].find(x=>x.id===id);

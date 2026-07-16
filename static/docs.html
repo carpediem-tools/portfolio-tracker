@@ -172,6 +172,8 @@ li{margin:5px 0}
 
 <p>The <strong>Total</strong> row shows the overall quantity, cumulative fees, total invested, and overall WAC.</p>
 
+<p>A <strong>- Sell</strong> button sits next to <strong>+ Buy</strong> in the sub-table header (hidden if the position holds no quantity). Clicking it creates a new row in the corresponding Sales tab, pre-filled with <code>qty = total quantity</code>, <code>buy avg cost = overall WAC</code> (fee-inclusive) and <code>buy fees = 0</code>, then switches to that tab. The new row is not linked back to the position: it can be freely edited afterward — useful in particular for a sale that predates purchases made since, where today's WAC no longer matches the cost basis at the time of that sale.</p>
+
 <h3>Live price status indicators</h3>
 
 <table>
@@ -233,8 +235,8 @@ li{margin:5px 0}
     <tr><td>Total S</td><td><code>(qty × unit sell price − sell fees) × fxRateSell</code> — in Options currency</td></tr>
     <tr><td>Buy date</td><td>Reference buy date</td></tr>
     <tr><td><strong>FX B</strong></td><td><strong>Exchange rate (native currency → Options currency) at the buy date</strong></td></tr>
-    <tr><td>Buy avg cost</td><td>Unit cost (calculated manually from the position)</td></tr>
-    <tr><td>Buy fees</td><td>Extra buy-side fees <strong>not already included</strong> in buy avg cost. Leave at 0 when buy avg cost is the position's WAC (fee-inclusive by definition — see section 3/4).</td></tr>
+    <tr><td>Buy avg cost</td><td>Unit cost — pre-filled from the position's WAC via the <strong>- Sell</strong> button (see section 3/4), or entered manually</td></tr>
+    <tr><td>Buy fees</td><td>Extra buy-side fees <strong>not already included</strong> in buy avg cost. Always 0 on a row created via <strong>- Sell</strong> (the WAC is fee-inclusive by definition). Only meaningful on a row entered manually via <strong>+ Add sale</strong>, where buy avg cost is a raw price you typed yourself.</td></tr>
     <tr><td>Total B</td><td><code>(qty × buy avg cost + buy fees) × fxRateBuy</code> — in Options currency</td></tr>
     <tr><td>P&amp;L</td><td><code>Total S − Total B</code> — in Options currency</td></tr>
     <tr><td>P&amp;L %</td><td><code>P&amp;L / Total B</code> — ratio, currency-agnostic</td></tr>
@@ -258,7 +260,7 @@ li{margin:5px 0}
 </ul>
 
 <blockquote><p><strong>A sale's ticker is not linked to an existing position.</strong> Historical sales of assets no longer held can be recorded without recreating the original position.</p></blockquote>
-<blockquote><p><strong>Important:</strong> for a partial lot (e.g. 3 of 10 shares purchased across several lots), the sale is entered with <code>qty = 3</code>, <code>buy avg cost = overall WAC of the position</code>, and <code>buy fees = 0</code> — the WAC is fee-inclusive by definition, it already carries the proportional share of purchase fees for that quantity. Entering a non-zero buy fees on top of the WAC double-counts fees.</p></blockquote>
+<blockquote><p><strong>Important:</strong> for a partial lot (e.g. 3 of 10 shares purchased across several lots), use the <strong>- Sell</strong> button on the position to pre-fill <code>qty = total quantity</code> and <code>buy avg cost = overall WAC</code>, then adjust <code>qty</code> down to the amount actually sold. <code>buy fees</code> should stay at <code>0</code> — the WAC is fee-inclusive by definition, it already carries the proportional share of purchase fees for that quantity. Entering a non-zero buy fees on top of the WAC double-counts fees. This has nothing to do with the number of purchase lots behind the position: a single-lot position also has a fee-inclusive WAC.</p></blockquote>
 
 <h3>Sales KPIs</h3>
 
@@ -783,9 +785,9 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
 
 <pre><code>tb = qSold × priceBuy + feesBuy</code></pre>
 
-<p>Initial amount invested for the sold units: purchase price × quantity, plus buy fees. Use a non-zero <code>feesBuy</code> only for a direct single-lot entry where buy avg cost is the raw price paid (fees not yet included). When buy avg cost comes from a position's WAC (fee-inclusive, see section 3/4), leave <code>feesBuy</code> at 0.</p>
+<p>Initial amount invested for the sold units: purchase price × quantity, plus buy fees. Use a non-zero <code>feesBuy</code> only on a row entered manually via <strong>+ Add sale</strong>, where <code>priceBuy</code> is a raw price you typed yourself (fees not yet included) — not on a row created via the <strong>- Sell</strong> button, where <code>priceBuy</code> is always the position's fee-inclusive WAC and <code>feesBuy</code> stays at 0. This is independent of how many purchase lots make up the position.</p>
 
-<p><em>Example: 5 shares at a raw purchase price of 150 € (fees excluded) + 2.50 € in fees → <code>tb = 752.50 €</code>. If 150 € were a WAC already including fees, <code>feesBuy</code> would be 0 and <code>tb = 750 €</code>.</em></p>
+<p><em>Example: 5 shares entered manually at a raw purchase price of 150 € (fees excluded) + 2.50 € in fees → <code>tb = 752.50 €</code>. If those same 5 shares were sold via the <strong>- Sell</strong> button, <code>priceBuy</code> would already be the fee-inclusive WAC (e.g. 150 €), <code>feesBuy</code> would be 0, and <code>tb = 750 €</code>.</em></p>
 
 <h4>Sale total in Options currency (<code>tsOpt</code>)</h4>
 
