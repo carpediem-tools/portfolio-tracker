@@ -856,10 +856,11 @@ function histoFxBg(source){
 }
 function calcTradeOptions(t){
   const c=calcTrade(t);
-  if(t.fxRateSell==null||t.fxRateBuy==null||t.fxRateSellSource==='ko'||t.fxRateBuySource==='ko'||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null};
+  if(t.fxRateSell==null||t.fxRateBuy==null||t.fxRateSellSource==='ko'||t.fxRateBuySource==='ko'||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null,pctOpt:null};
   const tsOpt=c.ts*t.fxRateSell;
   const tbOpt=c.tb*t.fxRateBuy;
-  return{tsOpt,tbOpt,gpOpt:tsOpt-tbOpt};
+  const gpOpt=tsOpt-tbOpt;
+  return{tsOpt,tbOpt,gpOpt,pctOpt:tbOpt?gpOpt/tbOpt:0};
 }
 async function syncFx(key){
   if(!(DATA[key]||[]).length){toast('⚠️ No price to sync','#7f1d1d');return;}
@@ -951,7 +952,7 @@ function renderES(type){
     <td class="r mono" style="border-left:2px solid var(--accent)">${fmt(o.tbOpt)}</td>
     <td class="r mono">${fmt(o.tsOpt)}</td>
     <td class="r mono ${o.gpOpt!=null?gpC(o.gpOpt):''}">${o.gpOpt!=null?fmt(o.gpOpt):'—'}</td>
-    <td class="r mono ${c.pct!=null?gpC(c.pct):''}">${fmtP(c.pct)}</td>
+    <td class="r mono ${o.pctOpt!=null?gpC(o.pctOpt):''}">${fmtP(o.pctOpt)}</td>
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');

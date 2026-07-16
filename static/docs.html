@@ -234,7 +234,7 @@ li{margin:5px 0}
     <tr><td>Buy date</td><td>Reference buy date</td></tr>
     <tr><td><strong>FX B</strong></td><td><strong>Exchange rate (native currency → Options currency) at the buy date</strong></td></tr>
     <tr><td>Buy avg cost</td><td>Unit cost (calculated manually from the position)</td></tr>
-    <tr><td>Buy fees</td><td>Proportional share of purchase fees for the quantity sold</td></tr>
+    <tr><td>Buy fees</td><td>Extra buy-side fees <strong>not already included</strong> in buy avg cost. Leave at 0 when buy avg cost is the position's WAC (fee-inclusive by definition — see section 3/4).</td></tr>
     <tr><td>Total B</td><td><code>(qty × buy avg cost + buy fees) × fxRateBuy</code> — in Options currency</td></tr>
     <tr><td>P&amp;L</td><td><code>Total S − Total B</code> — in Options currency</td></tr>
     <tr><td>P&amp;L %</td><td><code>P&amp;L / Total B</code> — ratio, currency-agnostic</td></tr>
@@ -258,7 +258,7 @@ li{margin:5px 0}
 </ul>
 
 <blockquote><p><strong>A sale's ticker is not linked to an existing position.</strong> Historical sales of assets no longer held can be recorded without recreating the original position.</p></blockquote>
-<blockquote><p><strong>Important:</strong> for a partial lot (e.g. 3 of 10 shares purchased across several lots), the sale is entered with <code>qty = 3</code>, <code>buy avg cost = overall WAC of the position</code>, and <code>buy fees = the proportional share of the original purchase fees</code>.</p></blockquote>
+<blockquote><p><strong>Important:</strong> for a partial lot (e.g. 3 of 10 shares purchased across several lots), the sale is entered with <code>qty = 3</code>, <code>buy avg cost = overall WAC of the position</code>, and <code>buy fees = 0</code> — the WAC is fee-inclusive by definition, it already carries the proportional share of purchase fees for that quantity. Entering a non-zero buy fees on top of the WAC double-counts fees.</p></blockquote>
 
 <h3>Sales KPIs</h3>
 
@@ -783,9 +783,9 @@ On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For
 
 <pre><code>tb = qSold × priceBuy + feesBuy</code></pre>
 
-<p>Initial amount invested for the sold units: purchase price × quantity, plus the proportional share of buy fees. A proportional <code>feesBuy</code> must be entered for the quantity being sold (see <a href="#5-sales-tabs">section 5</a>).</p>
+<p>Initial amount invested for the sold units: purchase price × quantity, plus buy fees. Use a non-zero <code>feesBuy</code> only for a direct single-lot entry where buy avg cost is the raw price paid (fees not yet included). When buy avg cost comes from a position's WAC (fee-inclusive, see section 3/4), leave <code>feesBuy</code> at 0.</p>
 
-<p><em>Example: 5 shares at a WAC of 150 € + 2.50 € in fees (proportional share) → <code>tb = 752.50 €</code>.</em></p>
+<p><em>Example: 5 shares at a raw purchase price of 150 € (fees excluded) + 2.50 € in fees → <code>tb = 752.50 €</code>. If 150 € were a WAC already including fees, <code>feesBuy</code> would be 0 and <code>tb = 750 €</code>.</em></p>
 
 <h4>Sale total in Options currency (<code>tsOpt</code>)</h4>
 
