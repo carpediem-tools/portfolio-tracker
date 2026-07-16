@@ -522,10 +522,10 @@ function renderOptions(){
 }
 function renderInfo(){
   return`<div class="card">
-    <h3>📊 Portfolio Tracker — V1.0</h3>
+    <h3>📊 Portfolio Tracker — V1.1</h3>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v1.0</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/06/13</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v1.1</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/07/16</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>CarpeDiem</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
@@ -750,7 +750,7 @@ function renderSpot(type){
       <td class="r mono">${p.livePrice?fmtNative(c.valo,p.currency):''}</td>
       <td class="r mono ${p.livePrice&&c.ti?gpC(c.evol):''}">${p.livePrice&&c.ti?fmtP(c.evol):''}</td>
       <td class="r mono ${p.livePrice&&c.ti?gpC(c.gp):''}">${p.livePrice&&c.ti?fmtNative(c.gp,p.currency):''}</td>
-      <td class="r mono">${p.livePrice&&totI&&convert(c.ti,p.currency,displayCur)!=null?fmtP(convert(c.ti,p.currency,displayCur)/totI):''}</td>
+      <td class="r mono">${p.livePrice&&totV&&convert(c.valo,p.currency,displayCur)!=null?fmtP(convert(c.valo,p.currency,displayCur)/totV):''}</td>
       <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button></td>
     </tr>`;
     if(exp){
