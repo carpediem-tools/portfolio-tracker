@@ -939,7 +939,7 @@ function renderES(type){
     <td style="border-left:2px solid var(--accent)">
       <input type="date" value="${t.sellDate||''}" onchange="upTrade('${key}',${t.id},'sellDate',this.value)">
     </td>
-    <td class="r"><input type="number" step="any" value="${t.qSold||''}" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
+    <td class="r"><input type="text" inputmode="decimal" class="qty-text" value="${t.qSold||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.priceSell||''}" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
     <td class="r"><input type="number" step="any" value="${t.feesSell||''}" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
     <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px">
@@ -956,7 +956,7 @@ function renderES(type){
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,3,8,4,5,4,4,3,7,6,5,4,3]:[8,4,8,6,5,5,3,8,4,6,5,5,3,8,8,7,4,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,2.5,8,5,5,4,4,2.5,7,6,5,4,3]:[8,4,8,6,5,5,2.5,8,5,6,5,5,2.5,8,8,7,4,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 Securities — Sales':'📋 Cryptos — Sales'}</h3>
     <div class="kpis">
