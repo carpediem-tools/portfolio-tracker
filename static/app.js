@@ -590,12 +590,17 @@ function saveOptions(){
     for(const key of ['ctoTrades','cryptoTrades']){
       DATA[key]=(DATA[key]||[]).map(t=>{
         const u={...t};
-        invalidateFxSource(u,'fxRateBuySource');
         invalidateFxSource(u,'fxRateSellSource');
         return u;
       });
     }
     DATA.historique=(DATA.historique||[]).map(h=>{const u={...h};invalidateFxSource(u,'fxRateSource');return u;});
+    for(const key of ['cto','crypto']){
+      DATA[key]=(DATA[key]||[]).map(p=>({
+        ...p,
+        purchases:(p.purchases||[]).map(l=>{const ul={...l};invalidateFxSource(ul,'fxRateSource');return ul;})
+      }));
+    }
     toast('⚠️ Display currency changed — FX rates for exits invalidated. Please re-sync.','#92400e');
   }
   saveData();render();
