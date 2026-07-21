@@ -458,18 +458,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
             writer.writerows(rows)
             return buf.getvalue().encode("utf-8")
 
-        def calc_pos(p):
+        def calc_pos(p, trades):
+            """Miroir Python de calcPos JS (spec Securities v2.0 §4.5).
+            Duplication sensible en v2.0 : les deux implémentations doivent produire
+            les mêmes tq/wac/wacBase/remaining sur les mêmes données (spec §9).
+            Valeurs NON arrondies (arrondi à l'écriture CSV)."""
             purchases = p.get('purchases', [])
             tq = sum((pu.get('qty') or 0) for pu in purchases)
             ti = sum((pu.get('qty') or 0) * (pu.get('price') or 0)
                      + (pu.get('fees') or 0) for pu in purchases)
-            wac  = round(ti / tq, 2) if tq else 0
-            live = round(p['livePrice'], 2) if p.get('livePrice') else None
-            valo = round(tq * live, 2) if live else None
-            gp   = round(valo - ti, 2) if live is not None else None
-            evol = round((valo - ti) / ti * 100, 1) if (live and ti) else None
-            return {'tq': tq, 'ti': round(ti, 2), 'wac': wac,
-                    'live': live, 'valo': valo, 'gp': gp, 'evol': evol}
+            # tout-ou-rien : test sur fxRateSource, JAMAIS sur fxRate != null.
+            # all([]) == True → tiBase = 0 si aucun lot (mais wacBase reste None car tq=0).
+            all_fx = all((pu.get('fxRateSource') in ('ok', 'auto', 'manual')) for pu in purchases)
+            ti_base = (sum(((pu.get('qty') or 0) * (pu.get('price') or 0) + (pu.get('fees') or 0))
+                           * (pu.get('fxRate') or 0) for pu in purchases)
+                       if all_fx else None)
+            wac = ti / tq if tq else 0
+            wac_base = ti_base / tq if (tq and ti_base is not None) else None
+            sold_qty = sum((t.get('qSold') or 0) for t in trades if t.get('posId') == p.get('id'))
+            remaining = tq - sold_qty
+            neg = remaining < 0
+            invested_remaining = remaining * wac_base if (wac_base is not None and not neg) else None
+            live = p.get('livePrice')
+            valo = None if neg else (remaining * live if live else 0)          # devise NATIVE
+            valo_base = (convert_fx(valo, p.get('currency', ''), display_cur, fx)
+                         if (valo is not None and p.get('currency')) else None)  # devise de reporting
+            gp = (valo_base - invested_remaining) if (valo_base is not None and invested_remaining is not None) else None
+            evol = (gp / invested_remaining) if (gp is not None and invested_remaining and invested_remaining > 0) else None
+            return {'tq': tq, 'ti': ti, 'wac': wac, 'wac_base': wac_base,
+                    'remaining': remaining, 'invested_remaining': invested_remaining,
+                    'live': live, 'valo': valo, 'valo_base': valo_base, 'gp': gp, 'evol': evol}
 
         def convert_fx(amount, from_cur, to_cur, fx):
             if amount is None or from_cur == to_cur: return amount
@@ -525,34 +543,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if f == 'hkd': return amount / fx['eurhkd'] * fx['eurcny'] if (fx.get('eurhkd') and fx.get('eurcny')) else None
             return None
 
-        def build_live_rows(positions, id_fields, headers):
+        def build_live_rows(positions, id_fields, headers, trades):
             """
             Génère les lignes position / achat / séparateur pour un onglet live.
             id_fields : colonnes identitaires répétées sur les lignes 'achat'.
+            trades : cessions du même onglet (posId) pour dériver remaining/wacBase.
             """
-            # Calcul de totI pour répartition_pct
+            # totI pour weight_pct : Σ invested_remaining des positions valorisées
+            # (livePrice ET wacBase disponibles = invested_remaining non None), déjà en
+            # devise de reporting — PAS de convert_fx (piège §4.10 / cf. priced JS).
             totI = 0.0
             for pos in positions:
-                if not pos.get('livePrice'):
-                    continue
-                c = calc_pos(pos)
-                v = convert_fx(c['ti'], pos.get('currency', ''), display_cur, fx)
-                if v is not None:
-                    totI += v
+                c = calc_pos(pos, trades)
+                if pos.get('livePrice') and c['invested_remaining'] is not None:
+                    totI += c['invested_remaining']
 
             E = ""  # cellule vide
             empty_row = {h: E for h in headers}
             rows = []
             for pos in positions:
-                calc  = calc_pos(pos)
+                calc  = calc_pos(pos, trades)
                 ident = {k: pos.get(k, E) for k in id_fields}
                 if 'classe' in ident:
                     ident['class'] = ident.pop('classe')
 
-                # repartition_pct : uniquement si totI > 0 et livePrice présent
-                if totI and pos.get('livePrice'):
-                    v = convert_fx(calc['ti'], pos.get('currency', ''), display_cur, fx)
-                    rep = round(v / totI * 100, 1) if v is not None else E
+                inv_rem = calc['invested_remaining']
+                # weight_pct : uniquement si totI > 0, livePrice présent et invested_remaining dispo
+                if totI and pos.get('livePrice') and inv_rem is not None:
+                    rep = round(inv_rem / totI * 100, 1)
                 else:
                     rep = E
 
@@ -561,17 +579,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     **ident,
                     "row_type":               "position",
                     "qty_total":              calc['tq'],
-                    "wac":                    calc['wac'],
-                    "total_invested":         calc['ti'],
-                    "live_price":             calc['live']  if calc['live']  is not None else E,
-                    "valuation":              calc['valo']  if calc['valo']  is not None else E,
-                    "change_pct":             calc['evol']  if calc['evol']  is not None else E,
-                    "pnl":                    calc['gp']    if calc['gp']    is not None else E,
+                    "qty_remaining":          calc['remaining'],
+                    "wac":                    round(calc['wac'], 2),
+                    "wac_base":               round(calc['wac_base'], 4) if calc['wac_base'] is not None else E,
+                    "wac_base_currency":      display_cur if calc['wac_base'] is not None else E,
+                    "invested_remaining":     round(inv_rem, 2) if inv_rem is not None else E,
+                    "live_price":             round(calc['live'], 2) if calc['live'] is not None else E,
+                    "valuation":              round(calc['valo_base'], 2) if calc['valo_base'] is not None else E,
+                    "change_pct":             round(calc['evol'] * 100, 1) if calc['evol'] is not None else E,
+                    "pnl":                    round(calc['gp'], 2) if calc['gp'] is not None else E,
                     "weight_pct":             rep,
                     "price_source":           pos.get('priceSource', E),
                     "price_date":             pos.get('priceDate',   E),
                     "purchase_date":          E, "purchase_qty":            E,
                     "purchase_price":         E, "purchase_fees":           E,
+                    "purchase_fx_rate":       E, "purchase_fx_rate_source": E,
                     "purchase_total_invested": E, "purchase_lot_avg_cost":        E,
                 })
 
@@ -585,15 +607,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     rows.append({
                         **ident,
                         "row_type":               "purchase",
-                        "qty_total":              E, "wac":             E,
-                        "total_invested":         E, "live_price":      E,
-                        "valuation":              E, "change_pct":      E,
-                        "pnl":                    E, "weight_pct":      E,
-                        "price_source":           E, "price_date":      E,
+                        "qty_total":              E, "qty_remaining":   E,
+                        "wac":                    E, "wac_base":        E,
+                        "wac_base_currency":      E, "invested_remaining": E,
+                        "live_price":             E, "valuation":       E,
+                        "change_pct":             E, "pnl":             E,
+                        "weight_pct":             E, "price_source":    E,
+                        "price_date":             E,
                         "purchase_date":          pu.get('date',  E),
                         "purchase_qty":           pu.get('qty',   E),
                         "purchase_price":         pu.get('price', E),
                         "purchase_fees":          pu.get('fees',  E),
+                        "purchase_fx_rate":       pu.get('fxRate') if pu.get('fxRate') is not None else E,
+                        "purchase_fx_rate_source": pu.get('fxRateSource') if pu.get('fxRateSource') is not None else E,
                         "purchase_total_invested": pu_ti,
                         "purchase_lot_avg_cost":       lot_avg_cost,
                     })
@@ -609,60 +635,92 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # ── 1. CTO live ───────────────────────────────────────────────────────
         HEADERS_CTO_LIVE = [
             "row_type", "id", "name", "isin", "ticker", "broker", "class", "currency",
-            "qty_total", "wac", "total_invested", "live_price", "valuation", "change_pct", "pnl",
+            "qty_total", "qty_remaining", "wac", "wac_base", "wac_base_currency",
+            "invested_remaining", "live_price", "valuation", "change_pct", "pnl",
             "weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
+            "purchase_fx_rate", "purchase_fx_rate_source",
             "purchase_total_invested", "purchase_lot_avg_cost",
         ]
         CTO_ID = ["id", "name", "ticker", "isin", "broker", "classe", "currency"]
-        cto_live_rows = build_live_rows(data.get('cto', []), CTO_ID, HEADERS_CTO_LIVE)
+        cto_live_rows = build_live_rows(data.get('cto', []), CTO_ID, HEADERS_CTO_LIVE, data.get('ctoTrades', []))
 
         # ── 2. Crypto live ────────────────────────────────────────────────────
         HEADERS_CRYPTO_LIVE = [
             "row_type", "id", "name", "ticker", "currency",
-            "qty_total", "wac", "total_invested", "live_price", "valuation", "change_pct", "pnl",
+            "qty_total", "qty_remaining", "wac", "wac_base", "wac_base_currency",
+            "invested_remaining", "live_price", "valuation", "change_pct", "pnl",
             "weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
+            "purchase_fx_rate", "purchase_fx_rate_source",
             "purchase_total_invested", "purchase_lot_avg_cost",
         ]
         CRYPTO_ID = ["id", "name", "ticker", "currency"]
-        crypto_live_rows = build_live_rows(data.get('crypto', []), CRYPTO_ID, HEADERS_CRYPTO_LIVE)
+        crypto_live_rows = build_live_rows(data.get('crypto', []), CRYPTO_ID, HEADERS_CRYPTO_LIVE, data.get('cryptoTrades', []))
 
         # ── 3 & 4. Sorties CTO + Crypto (qBought exclu ; isin absent de crypto) ──
         CCY = display_cur.upper()
         SORTIES_OPT_HEADERS = [f"total_buy_{CCY}", f"total_sell_{CCY}", f"pnl_{CCY}", "pnl_pct"]
 
         def calc_sortie_opts(t):
-            """Total B/S + P&L en devise Options, et P&L % aligné sur fmtP (ratio*100, 1 déc.)."""
-            q_sold, price_buy, price_sell = t.get('qSold') or 0, t.get('priceBuy') or 0, t.get('priceSell') or 0
-            fees_buy, fees_sell = t.get('feesBuy') or 0, t.get('feesSell') or 0
-            ts = q_sold * price_sell - fees_sell
-            tb = q_sold * price_buy + fees_buy
-            pct = round((ts - tb) / tb * 100, 1) if tb > 0 else 0
-            fx_buy, fx_sell = t.get('fxRateBuy'), t.get('fxRateSell')
-            if fx_buy is not None and fx_sell is not None:
-                total_buy  = round(tb * fx_buy, 2)
+            """Cession v2.0 : coût de base figé (wacBaseAtSale), volet achat disparu.
+            tb = qSold × wacBaseAtSale (toujours calculable en wacBaseCurrency).
+            tbDisplay = convert_fx(tb, wacBaseCurrency, display_cur) — peut être None.
+            Totaux Options disponibles seulement si fxRateSell résolu ET tbDisplay non None
+            (double condition, miroir de calcTradeOptions JS — pas seulement fxRateSell)."""
+            q_sold, price_sell = t.get('qSold') or 0, t.get('priceSell') or 0
+            fees_sell = t.get('feesSell') or 0
+            wbas, wbcur = t.get('wacBaseAtSale'), t.get('wacBaseCurrency')
+            ts = q_sold * price_sell - fees_sell if (q_sold > 0 and price_sell > 0) else 0
+            tb = q_sold * (wbas or 0)
+            tb_display = convert_fx(tb, wbcur, display_cur, fx) if wbcur else None
+            fx_sell = t.get('fxRateSell')
+            resolved = fx_sell is not None and t.get('fxRateSellSource') != 'ko'
+            if resolved and tb_display is not None:
+                total_buy  = round(tb_display, 2)
                 total_sell = round(ts * fx_sell, 2)
                 pnl        = round(total_sell - total_buy, 2)
+                pct        = round(pnl / total_buy * 100, 1) if total_buy > 0 else ""
             else:
-                total_buy = total_sell = pnl = ""
+                total_buy = total_sell = pnl = pct = ""
             return {f"total_buy_{CCY}": total_buy, f"total_sell_{CCY}": total_sell,
                     f"pnl_{CCY}": pnl, "pnl_pct": pct}
 
         HEADERS_CTO_SORTIES = [
-            "id", "name", "ticker", "isin", "currency",
-            "buyDate", "priceBuy", "feesBuy", "fxRateBuy", "fxRateBuySource",
+            "id", "name", "ticker", "isin", "currency", "pos_id",
+            "wac_base_at_sale", "wac_base_currency",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ] + SORTIES_OPT_HEADERS
         HEADERS_CRYPTO_SORTIES = [
-            "id", "name", "currency",
-            "buyDate", "priceBuy", "feesBuy", "fxRateBuy", "fxRateBuySource",
+            "id", "name", "currency", "pos_id",
+            "wac_base_at_sale", "wac_base_currency",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ] + SORTIES_OPT_HEADERS
-        cto_sorties_rows    = [{**{k: t.get(k, "") for k in HEADERS_CTO_SORTIES}, **calc_sortie_opts(t)}
-                               for t in data.get('ctoTrades', [])]
-        crypto_sorties_rows = [{**{k: t.get(k, "") for k in HEADERS_CRYPTO_SORTIES}, **calc_sortie_opts(t)}
-                               for t in data.get('cryptoTrades', [])]
+
+        def sortie_row(t):
+            """Ligne cession v2.0. pos_id vide si orpheline ; wac_base_at_sale/currency
+            vides si wacBase jamais résolu (cession migrée sans FX achat, spec §4.2 migration 9)."""
+            r = {
+                "id":        t.get("id", ""),
+                "name":      t.get("name", ""),
+                "ticker":    t.get("ticker", ""),
+                "isin":      t.get("isin", ""),
+                "currency":  t.get("currency", ""),
+                "pos_id":    t.get("posId") if t.get("posId") is not None else "",
+                "wac_base_at_sale":  t.get("wacBaseAtSale") if t.get("wacBaseAtSale") is not None else "",
+                "wac_base_currency": t.get("wacBaseCurrency") or "",
+                "sellDate":  t.get("sellDate", ""),
+                "qSold":     t.get("qSold", ""),
+                "priceSell": t.get("priceSell", ""),
+                "feesSell":  t.get("feesSell", ""),
+                "fxRateSell":       t.get("fxRateSell") if t.get("fxRateSell") is not None else "",
+                "fxRateSellSource": t.get("fxRateSellSource") or "",
+            }
+            r.update(calc_sortie_opts(t))
+            return r
+
+        cto_sorties_rows    = [sortie_row(t) for t in data.get('ctoTrades', [])]
+        crypto_sorties_rows = [sortie_row(t) for t in data.get('cryptoTrades', [])]
 
         # ── 5. Historique ─────────────────────────────────────────────────────
         # currency injectée depuis settings ; classes aplati en class_<clé> (union triée)
@@ -686,28 +744,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             histo_rows.append(row)
 
         # ── 6. Summary (KPIs consolidés, devise Options) ─────────────────────────
-        def consolidated_totals(positions):
-            """Σ convert_fx(ti/valo) sur positions livePrice + convertibles (cf. doc §12.4)."""
+        def consolidated_totals(positions, trades):
+            """KPIs consolidés v2.0 (§4.10 Securities) : positions valorisées
+            (livePrice ET wacBase → invested_remaining non None). invested_remaining
+            déjà en devise de reporting (PAS de convert_fx) ; valo reste NATIVE (convert_fx)."""
             inv = val = 0.0
             for pos in positions:
-                if not pos.get('livePrice'):
+                c = calc_pos(pos, trades)
+                if not (pos.get('livePrice') and c['invested_remaining'] is not None):
                     continue
-                c  = calc_pos(pos)
-                vi = convert_fx(c['ti'],   pos.get('currency', ''), display_cur, fx)
+                inv += c['invested_remaining']
                 vv = convert_fx(c['valo'], pos.get('currency', ''), display_cur, fx)
-                if vi is not None: inv += vi
-                if vv is not None: val += vv
+                if vv is not None:
+                    val += vv
             return round(inv, 2), round(val, 2)
 
         def realized_pnl(trades):
-            """Σ pnl_<CCY> (= gpOpt) des cessions avec fxRateBuy et fxRateSell non null (doc §12.7)."""
-            total = sum(calc_sortie_opts(t)[f"pnl_{CCY}"]
-                         for t in trades
-                         if t.get('fxRateBuy') is not None and t.get('fxRateSell') is not None)
+            """Σ pnl_<CCY> (= gpOpt) des cessions complètes — même condition que
+            calc_sortie_opts (fxRateSell résolu ET tbDisplay disponible), pas fxRateBuy."""
+            total = 0.0
+            for t in trades:
+                v = calc_sortie_opts(t)[f"pnl_{CCY}"]
+                if v != "":
+                    total += v
             return round(total, 2)
 
-        sec_inv, sec_val = consolidated_totals(data.get('cto', []))
-        cry_inv, cry_val = consolidated_totals(data.get('crypto', []))
+        sec_inv, sec_val = consolidated_totals(data.get('cto', []),    data.get('ctoTrades', []))
+        cry_inv, cry_val = consolidated_totals(data.get('crypto', []), data.get('cryptoTrades', []))
 
         HEADERS_SUMMARY = ["metric", "value", "currency"]
         summary_rows = [

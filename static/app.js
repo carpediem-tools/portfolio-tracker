@@ -50,6 +50,33 @@ async function loadData(){
     if(h.securities===undefined){h.securities=Object.values(h.classes||{}).reduce((s,v)=>s+(v||0),0);migrated=true;}
     if(!('fxRate' in h)){h.fxRate=null;h.fxRateSource=null;migrated=true;}
   });
+  // Migration 8 (v2.0) : lots d'achat sans fxRateSource → non résolus (fxRate/fxRateSource null).
+  ['cto','crypto'].forEach(k=>{
+    (DATA[k]||[]).forEach(p=>{
+      (p.purchases||[]).forEach(lot=>{
+        if(!('fxRateSource' in lot)){lot.fxRate=null;lot.fxRateSource=null;migrated=true;}
+      });
+    });
+  });
+  // Migration 9 (v2.0) : cessions v1.1 → posId + wacBaseAtSale/wacBaseCurrency reconstruits
+  // (ou null si FX achat non résolu), puis suppression du volet achat obsolète.
+  ['ctoTrades','cryptoTrades'].forEach(k=>{
+    (DATA[k]||[]).forEach(t=>{
+      if(!('posId' in t)){
+        t.posId=null;
+        const q=t.qSold||0;
+        if(q>0&&['ok','auto','manual'].includes(t.fxRateBuySource)&&t.fxRateBuy!=null){
+          t.wacBaseAtSale=(q*(t.priceBuy||0)+(t.feesBuy||0))*t.fxRateBuy/q;
+          t.wacBaseCurrency=DATA.settings.currency;
+        }else{
+          t.wacBaseAtSale=null;
+          t.wacBaseCurrency=null;
+        }
+        delete t.buyDate;delete t.priceBuy;delete t.feesBuy;delete t.fxRateBuy;delete t.fxRateBuySource;
+        migrated=true;
+      }
+    });
+  });
   if(migrated)await saveData();
   render();
 }
