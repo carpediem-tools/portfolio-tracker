@@ -668,6 +668,16 @@ function importJSON(input){
   };r.readAsText(f);
 }
 
+// shouldShowFxBanner — 3 conditions indépendantes (spec Dashboard v1.1 §4.5).
+// Ne duplique jamais la règle tout-ou-rien (calcPos) ni le filtre gpOpt (calcTradeOptions).
+function shouldShowFxBanner(){
+  if(Object.keys(getFx()).length===0)return true;
+  if((DATA.cto||[]).some(p=>calcPos(p,DATA.ctoTrades).wacBase==null))return true;
+  if((DATA.crypto||[]).some(p=>calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
+  if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t).gpOpt==null))return true;
+  if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t).gpOpt==null))return true;
+  return false;
+}
 function renderDash(){
   const displayCur=getCur().code;
   const ctoC=DATA.cto.map(p=>({...p,c:calcPos(p,DATA.ctoTrades)}));
@@ -693,8 +703,6 @@ function renderDash(){
   },0);
   cls.push({name:'Cryptos',valo:crValo});
   const totV=cls.reduce((s,c)=>s+c.valo,0);
-  const hasFx=Object.keys(getFx()).length>0;
-  const hasTrades=(DATA.ctoTrades||[]).length>0||(DATA.cryptoTrades||[]).length>0;
   const bmap={};
   ctoC.filter(p=>p.livePrice).forEach(p=>{
     const b=p.broker||'?';
@@ -730,8 +738,8 @@ function renderDash(){
       <div class="kpi-value" style="color:#f59e0b;font-size:14px">${excludedCount} without currency or FX</div>
     </div>`:''}
   </div>
-  ${!hasFx&&hasTrades?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
-    ⚠️ Exchange rates not loaded — run a sync to enable currency conversion.
+  ${shouldShowFxBanner()?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
+    ⚠️ Some FX rates are missing — a sync is recommended.
   </div>`:''}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
