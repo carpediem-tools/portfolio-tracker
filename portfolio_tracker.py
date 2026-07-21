@@ -246,6 +246,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif self.path == "/api/sync/crypto":   self.handle_sync("crypto")
             elif self.path == "/api/syncfx/cto":         self.handle_syncfx("cto")
             elif self.path == "/api/syncfx/crypto":       self.handle_syncfx("crypto")
+            elif self.path == "/api/syncfx/cto-purchases":    self.handle_syncfx_lots("cto")
+            elif self.path == "/api/syncfx/crypto-purchases": self.handle_syncfx_lots("crypto")
             elif self.path == "/api/syncfx/historique":   self.handle_syncfx_historique()
             elif self.path == "/api/quit":          self.handle_quit()
             elif self.path == "/api/export":        self.handle_export()
@@ -320,7 +322,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_json(res)
 
     def handle_syncfx(self, scope):
-        """Sync des taux FX historiques (Frankfurter) pour ctoTrades ou cryptoTrades."""
+        """Sync du taux FX de vente (Frankfurter) pour ctoTrades ou cryptoTrades.
+        v2.0 : plus de volet achat. `currency` est structurellement toujours renseignée
+        (copiée à la création, création bloquée sinon) — plus de garde-fou devise vide."""
         data = load_data()
         options_cur = data.get("settings", {}).get("currency", "eur")
         trades = data["ctoTrades"] if scope == "cto" else data["cryptoTrades"]
@@ -330,28 +334,54 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for trade in trades:
             trade_id = trade.get("id", "?")
             native = trade.get("currency")
-            if not native:
-                fx_fail.append({"id": trade_id, "error": "devise non définie"})
+            date = trade.get("sellDate")
+            if not date:
                 continue
+            r = fetch_fx_rate_at(native, options_cur, date)
+            if r["ok"]:
+                trade["fxRateSell"]       = r["rate"]
+                trade["fxRateSellSource"] = r["source"]
+                fx_ok.append({"id": trade_id, "rate": r["rate"], "source": r["source"]})
+                print(f"  syncfx {scope} [{trade_id}] sell: "
+                      f"{native}→{options_cur} @ {date} = {r['rate']} ({r['source']})")
+            else:
+                fx_fail.append({"id": trade_id, "error": r["error"]})
+                print(f"  syncfx {scope} [{trade_id}] sell ✗: {r['error']}")
 
-            for flow in ("buy", "sell"):
-                date_field   = "buyDate"   if flow == "buy" else "sellDate"
-                rate_field   = "fxRateBuy" if flow == "buy" else "fxRateSell"
-                source_field = rate_field + "Source"
-                date = trade.get(date_field)
+        save_data(data)
+        self.send_json({"fx_ok": fx_ok, "fx_fail": fx_fail, "data": data})
+
+    def handle_syncfx_lots(self, scope):
+        """Sync des taux FX historiques (Frankfurter) pour les lots d'achat cto[] ou crypto[].
+        Même logique que handle_syncfx mais itère purchases[] au lieu des cessions :
+        native = position.currency, date = lot.date. Retraite tous les lots datés."""
+        data = load_data()
+        options_cur = data.get("settings", {}).get("currency", "eur")
+        positions = data["cto"] if scope == "cto" else data["crypto"]
+        fx_ok   = []
+        fx_fail = []
+
+        for pos in positions:
+            pos_id = pos.get("id", "?")
+            native = pos.get("currency")
+            for i, lot in enumerate(pos.get("purchases", [])):
+                date = lot.get("date")
                 if not date:
+                    continue  # lot sans date : ignoré silencieusement (ni succès ni échec)
+                if not native:
+                    fx_fail.append({"id": pos_id, "lot": i, "error": "devise non définie"})
                     continue
                 r = fetch_fx_rate_at(native, options_cur, date)
                 if r["ok"]:
-                    trade[rate_field]   = r["rate"]
-                    trade[source_field] = r["source"]
-                    fx_ok.append({"id": trade_id, "flow": flow,
+                    lot["fxRate"]       = r["rate"]
+                    lot["fxRateSource"] = r["source"]
+                    fx_ok.append({"id": pos_id, "lot": i,
                                   "rate": r["rate"], "source": r["source"]})
-                    print(f"  syncfx {scope} [{trade_id}] {flow}: "
+                    print(f"  syncfx {scope}-purchases [{pos_id}/{i}]: "
                           f"{native}→{options_cur} @ {date} = {r['rate']} ({r['source']})")
                 else:
-                    fx_fail.append({"id": trade_id, "flow": flow, "error": r["error"]})
-                    print(f"  syncfx {scope} [{trade_id}] {flow} ✗: {r['error']}")
+                    fx_fail.append({"id": pos_id, "lot": i, "error": r["error"]})
+                    print(f"  syncfx {scope}-purchases [{pos_id}/{i}] ✗: {r['error']}")
 
         save_data(data)
         self.send_json({"fx_ok": fx_ok, "fx_fail": fx_fail, "data": data})

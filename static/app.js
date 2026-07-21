@@ -272,17 +272,38 @@ function isoToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d
 function isoNow(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
 const gpC=n=>n>=0?'gain':'loss';
 const nextId=a=>Math.max(0,...a.map(x=>x.id))+1;
-function calcPos(p){
+// calcPos(p, trades) — partagée intégralement entre Securities (cto[]) et Cryptos (crypto[]).
+// `trades` = cessions du bloc Sales (ctoTrades ou cryptoTrades) ; filtrées par posId
+// pour dériver la quantité réellement détenue (remaining). Voir spec Securities v2.0 §4.5.
+function calcPos(p,trades=[]){
   const tq=p.purchases.reduce((s,x)=>s+(x.qty||0),0);
   const ti=p.purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0)),0);
-  const wac=tq?ti/tq:0,valo=p.livePrice?tq*p.livePrice:0;
-  return{tq,ti,wac,valo,gp:p.livePrice?valo-ti:0,evol:p.livePrice&&ti?(valo-ti)/ti:0};
+  // tiBase / wacBase : tout-ou-rien. Le test porte UNIQUEMENT sur fxRateSource
+  // (jamais sur fxRate!=null : un fxRate périmé reste non-null après invalidation).
+  const fxResolved=s=>s==='ok'||s==='auto'||s==='manual';
+  const allFxResolved=p.purchases.every(x=>fxResolved(x.fxRateSource));   // vacuément vrai si aucun lot (tiBase=0, mais wacBase reste indisponible car tq=0)
+  const tiBase=allFxResolved
+    ?p.purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0))*(x.fxRate||0),0)
+    :null;
+  const wac=tq?ti/tq:0;                              // coût moyen natif — invariant aux ventes (ti/tq, jamais ti/remaining)
+  const wacBase=(tq&&tiBase!=null)?tiBase/tq:null;   // coût moyen en devise de reporting
+  const soldQty=(trades||[]).filter(t=>t.posId===p.id).reduce((s,t)=>s+(t.qSold||0),0);
+  const remaining=tq-soldQty;
+  const negRem=remaining<0;                          // incohérence : plus vendu qu'acheté → valo/gp indisponibles (§4.5bis)
+  // investedRemaining : DÉJÀ en devise de reporting (dérive de wacBase). Ne jamais ré-envelopper dans convert().
+  const investedRemaining=(wacBase!=null&&!negRem)?remaining*wacBase:null;
+  const valo=negRem?null:(p.livePrice?remaining*p.livePrice:0);   // en devise NATIVE
+  const valoBase=(valo!=null&&p.currency)?convert(valo,p.currency,getCur().code):null;
+  const gp=(valoBase!=null&&investedRemaining!=null)?valoBase-investedRemaining:null;
+  const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
+  return{tq,ti,tiBase,wac,wacBase,soldQty,remaining,investedRemaining,valo,gp,evol};
 }
+// Cession v2.0 : plus de volet achat natif. tb = qSold × wacBaseAtSale
+// (déjà en devise de reporting figée wacBaseCurrency) — toujours calculable.
 function calcTrade(t){
-  if(!(t.qSold>0&&t.priceBuy>0&&t.priceSell>0))return{ts:0,tb:0,gp:null,pct:null};
-  const ts=(t.qSold||0)*(t.priceSell||0)-(t.feesSell||0);
-  const tb=(t.qSold||0)*(t.priceBuy||0)+(t.feesBuy||0);
-  return{ts,tb,gp:ts-tb,pct:tb?(ts-tb)/tb:0};
+  const ts=(t.qSold>0&&t.priceSell>0)?(t.qSold||0)*(t.priceSell||0)-(t.feesSell||0):0;
+  const tb=(t.qSold||0)*(t.wacBaseAtSale||0);
+  return{ts,tb};
 }
 function pBg(p){
   if(p.priceSource==='stale') return 'error-cell';
@@ -622,8 +643,8 @@ function importJSON(input){
 
 function renderDash(){
   const displayCur=getCur().code;
-  const ctoC=DATA.cto.map(p=>({...p,c:calcPos(p)}));
-  const crC=DATA.crypto.map(p=>({...p,c:calcPos(p)}));
+  const ctoC=DATA.cto.map(p=>({...p,c:calcPos(p,DATA.ctoTrades)}));
+  const crC=DATA.crypto.map(p=>({...p,c:calcPos(p,DATA.cryptoTrades)}));
   // Conversion de chaque valo vers la devise Options
   function convertValo(p,c){
     if(!p.livePrice||!p.currency)return null;
@@ -713,20 +734,19 @@ function renderDash(){
 function renderSpot(type){
   const isCto=type==='cto';
   const displayCur=getCur().code;
-  const calcs=DATA[type].map(p=>({...p,c:calcPos(p)}));
-  const priced=calcs.filter(p=>p.livePrice);
-  const totI=priced.reduce((s,p)=>{
-    const v=convert(p.c.ti,p.currency,displayCur);
-    return v!=null?s+v:s;
-  },0);
+  const trades=isCto?DATA.ctoTrades:DATA.cryptoTrades;
+  const calcs=DATA[type].map(p=>({...p,c:calcPos(p,trades)}));
+  // KPIs consolidés (§4.10) : uniquement positions valorisées (livePrice ET wacBase disponibles → investedRemaining calculable).
+  const priced=calcs.filter(p=>p.livePrice&&p.c.investedRemaining!=null);
+  const totI=priced.reduce((s,p)=>s+p.c.investedRemaining,0);   // DÉJÀ en devise de reporting — pas de convert() (piège §4.10)
   const totV=priced.reduce((s,p)=>{
-    const v=convert(p.c.valo,p.currency,displayCur);
+    const v=convert(p.c.valo,p.currency,displayCur);            // valo NATIVE → convert() nécessaire
     return v!=null?s+v:s;
   },0);
   const totGP=totV-totI;
   const cols=isCto?18:15;
   const colgroupSpot=makeColgroup(isCto?[2,9,8,7,8,8,4,5,7,7,10,3,7,7,5,7,5,3]:[2,10,10,5,6,9,9,11,3,7,9,6,9,5,3]);
-  const colgroupSub=makeColgroup([22,12,16,12,18,16,4]);
+  const colgroupSub=makeColgroup([18,10,12,10,14,12,14,5,5]);
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
@@ -742,9 +762,11 @@ function renderSpot(type){
         <option value=""${!p.classe?' selected':''}></option>
         ${(DATA.settings.classes||[]).map(cl=>`<option value="${cl}"${p.classe===cl?' selected':''}>${cl}</option>`).join('')}</select></td>`:''}
       <td style="text-align:center;font-size:11px;color:var(--text2)">${p.currency?p.currency.toUpperCase():'—'}</td>
-      <td class="r mono computed">${fmtQ(c.tq)}</td>
+      <td class="r mono computed ${c.remaining<0?'error-cell':''}">${c.soldQty>0
+        ?`<div style="color:var(--text2);font-size:10px">${fmtQ(c.tq)}</div><div style="color:var(--red);font-size:10px">−${fmtQ(c.soldQty)}</div><div style="border-top:1px solid var(--border);font-weight:700">${fmtQ(c.remaining)||'0'}</div>`
+        :fmtQ(c.remaining)}</td>
       <td class="r mono computed">${c.wac>0?fmtNative(c.wac,p.currency):''}</td>
-      <td class="r mono computed">${c.ti>0?fmtNative(c.ti,p.currency):''}</td>
+      <td class="r mono computed">${c.investedRemaining!=null?fmt(c.investedRemaining):''}</td>
       <td class="${pBg(p)} mono">
         ${pIco(p)} ${p.livePrice?fmtNative(p.livePrice,p.currency):'—'}
       </td>
@@ -752,10 +774,10 @@ function renderSpot(type){
         <button onclick="event.stopPropagation();manualPrice('${type}',${p.id})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
       </td>
       <td style="font-size:10px;color:var(--text2)">${p.priceDate||''}</td>
-      <td class="r mono">${p.livePrice?fmtNative(c.valo,p.currency):''}</td>
-      <td class="r mono ${p.livePrice&&c.ti?gpC(c.evol):''}">${p.livePrice&&c.ti?fmtP(c.evol):''}</td>
-      <td class="r mono ${p.livePrice&&c.ti?gpC(c.gp):''}">${p.livePrice&&c.ti?fmtNative(c.gp,p.currency):''}</td>
-      <td class="r mono">${p.livePrice&&totV&&convert(c.valo,p.currency,displayCur)!=null?fmtP(convert(c.valo,p.currency,displayCur)/totV):''}</td>
+      <td class="r mono">${(p.livePrice&&c.valo!=null&&convert(c.valo,p.currency,displayCur)!=null)?fmt(convert(c.valo,p.currency,displayCur)):''}</td>
+      <td class="r mono ${c.evol!=null?gpC(c.evol):''}">${c.evol!=null?fmtP(c.evol):''}</td>
+      <td class="r mono ${c.gp!=null?gpC(c.gp):''}">${c.gp!=null?fmt(c.gp):''}</td>
+      <td class="r mono">${c.investedRemaining!=null&&totI?fmtP(c.investedRemaining/totI):''}</td>
       <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button></td>
     </tr>`;
     if(exp){
@@ -770,6 +792,12 @@ function renderSpot(type){
           <td class="r"><input type="number" step="any" value="${pu.fees||''}" onchange="upPurch('${type}',${p.id},${i},'fees',this.value)"></td>
           <td class="r mono">${fmtNative(ti2,p.currency)}</td>
           <td class="r mono">${lotAvgCost?fmtNative(lotAvgCost,p.currency):''}</td>
+          <td class="${fxBg(pu.fxRateSource)}" style="font-size:12px">
+            ${fxIco(pu.fxRateSource)} ${pu.fxRate!=null?pu.fxRate.toFixed(2):'—'}
+          </td>
+          <td class="btn-col">
+            <button onclick="manualLotFx('${type}',${p.id},${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
+          </td>
           <td><button class="btn btn-red btn-sm" onclick="delPurch('${type}',${p.id},${i})">✕</button></td></tr>`;
       });
       if(p.purchases.length){
@@ -781,19 +809,20 @@ function renderSpot(type){
           <td class="r mono" style="font-weight:700;color:var(--accent)">${fmtNative(tf,p.currency)}</td>
           <td class="r mono" style="font-weight:700;color:var(--accent)">${fmtNative(c.ti,p.currency)}</td>
           <td class="r mono" style="font-weight:700;color:var(--accent)">Avg cost: ${fmtNative(c.wac,p.currency)}</td>
-          <td></td></tr>`;
+          <td class="r mono" style="font-weight:700;color:var(--accent)">${c.wacBase!=null?'Opt: '+fmt(c.wacBase):'—'}</td>
+          <td></td><td></td></tr>`;
       }
       rows+=`<tr><td colspan="${cols}" style="padding:0;border:none"><div class="sub">
         <div class="sub-header">
           <span class="sub-title">Purchase detail — ${p.name||'(unnamed)'}</span>
           <div style="display:flex;gap:6px">
             <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Buy</button>
-            ${c.tq>0?`<button class="btn btn-blue btn-sm" onclick="sellFromPos('${type}',${p.id})">- Sell</button>`:''}
+            <button class="btn btn-blue btn-sm" onclick="sellFromPos('${type}',${p.id})">- Sell</button>
           </div>
         </div>
         <table class="resp-tbl" style="min-width:500px">${colgroupSub}<thead><tr>
           <th>Date</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Fees</th>
-          <th class="r">Total invested</th><th class="r">Lot avg cost</th><th></th>
+          <th class="r">Total invested</th><th class="r">Lot avg cost</th><th>FX</th><th class="btn-col"></th><th></th>
         </tr></thead><tbody>${sub}</tbody></table>
       </div></td></tr>`;
     }
@@ -824,6 +853,7 @@ function renderSpot(type){
       </div>
     </div>
     <div class="toolbar">${syncBtn}
+      <button class="btn" onclick="syncLotFx('${type}')">🔄 Sync FX rates</button>
       <button class="btn btn-blue" onclick="addPos('${type}')">+ Add position</button>
     </div>
     <div style="overflow-x:auto;max-width:100%">
@@ -862,14 +892,35 @@ function histoFxBg(source){
   if(source==='ko')return 'error-cell';
   return '';
 }
+// tbDisplay = convert(tb, wacBaseCurrency, deviseOptions courante) — PEUT valoir null
+// (taux du jour absent). gpOpt/pctOpt/tsOpt exigent fxRateSell résolu ET tbDisplay non-null
+// — les deux conditions conjointement (piège spec §4.5/§9). tbDisplay reste affichable seul.
 function calcTradeOptions(t){
   const c=calcTrade(t);
-  if(t.fxRateSell==null||t.fxRateBuy==null||t.fxRateSellSource==='ko'||t.fxRateBuySource==='ko'||c.gp==null)return{tsOpt:null,tbOpt:null,gpOpt:null,pctOpt:null};
+  const tbDisplay=convert(c.tb,t.wacBaseCurrency,getCur().code);
+  if(t.fxRateSell==null||t.fxRateSellSource==='ko'||tbDisplay==null)
+    return{tbDisplay,tsOpt:null,gpOpt:null,pctOpt:null};
   const tsOpt=c.ts*t.fxRateSell;
-  const tbOpt=c.tb*t.fxRateBuy;
-  const gpOpt=tsOpt-tbOpt;
-  return{tsOpt,tbOpt,gpOpt,pctOpt:tbOpt?gpOpt/tbOpt:0};
+  const gpOpt=tsOpt-tbDisplay;
+  return{tbDisplay,tsOpt,gpOpt,pctOpt:tbDisplay>0?gpOpt/tbDisplay:null};
 }
+// KPIs consolidés du bandeau — les 4 totaux partagent STRICTEMENT le même périmètre
+// (gpOpt != null : fxRateSell résolu ET tbDisplay disponible). Fonction pure de l'état des cessions.
+function calcSalesKpis(type){
+  const key=type==='cto'?'ctoTrades':'cryptoTrades';
+  const trades=DATA[key]||[];
+  const complete=trades.map(t=>calcTradeOptions(t)).filter(o=>o.gpOpt!=null);
+  const totalB=complete.reduce((s,o)=>s+o.tbDisplay,0);
+  const totalS=complete.reduce((s,o)=>s+o.tsOpt,0);
+  const gpTotal=complete.reduce((s,o)=>s+o.gpOpt,0);
+  return{totalB,totalS,gpTotal,pctTotal:totalB>0?gpTotal/totalB:null,
+         countFx:complete.length,countNoFx:trades.length-complete.length};
+}
+// Lecture ponctuelle et non fonctionnelle de Securities/Cryptos : existence uniquement.
+// Ne sert JAMAIS à recalculer name/isin/ticker (toujours lus sur la cession figée).
+function posExists(type,posId){return (DATA[type]||[]).some(p=>p.id===posId);}
+// Navigation depuis une cession vers sa position d'origine (identification cliquable).
+function goToPos(type,posId){expanded[type+posId]=true;switchTab(type);}
 async function syncFx(key){
   if(!(DATA[key]||[]).length){toast('⚠️ No price to sync','#7f1d1d');return;}
   fxSyncAttempted[key]=true;
@@ -881,6 +932,25 @@ async function syncFx(key){
     const n=j.fx_ok.length,f=j.fx_fail.length;
     const ok=n>0||f===0;
     toast((ok?'✅ ':'⚠ ')+'FX rates: '+n+' OK'+(f?' / '+f+' failed':''),
+          ok?'#166534':'#7f1d1d');
+    render();
+  }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
+}
+
+// Sync FX des lots d'achat (purchases[]) — symétrique de syncFx (Sales).
+// Retraite systématiquement tous les lots datés, y compris 'ok'/'manual'.
+async function syncLotFx(type){
+  const positions=DATA[type]||[];
+  if(!positions.some(p=>(p.purchases||[]).some(l=>l.date))){
+    toast('⚠️ No purchase lot to sync','#7f1d1d');return;
+  }
+  toast('⏳ Syncing lot FX rates '+type.toUpperCase()+'…','#1d4ed8');
+  try{
+    const r=await fetch('/api/syncfx/'+type+'-purchases');
+    const j=await r.json();DATA=j.data;
+    const n=j.fx_ok.length,f=j.fx_fail.length;
+    const ok=n>0||f===0;
+    toast((ok?'✅ ':'⚠ ')+'Lot FX rates: '+n+' OK'+(f?' / '+f+' failed':''),
           ok?'#166534':'#7f1d1d');
     render();
   }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
@@ -915,34 +985,20 @@ async function manualHistoFx(i){
 // E/S
 function renderES(type){
   const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
-  const calcs=DATA[key].map(t=>({...t,c:calcTrade(t)}));
-  const opts=calcs.map(t=>calcTradeOptions(t));
-  const countFx=opts.filter(o=>o.gpOpt!=null).length;
-  const countNoFx=calcs.length-countFx;
-  const gpTotal=opts.reduce((s,o)=>s+(o.gpOpt!=null?o.gpOpt:0),0);
+  const trades=DATA[key]||[];
+  const opts=trades.map(t=>calcTradeOptions(t));
+  const kpi=calcSalesKpis(type);
   const cur=getCur().code.toUpperCase();
-  let rows=calcs.map((t,i)=>{const c=t.c;const o=opts[i];return`<tr>
-    <!-- DÉNOMINATION -->
-    <td><input value="${t.name||''}" onchange="upTrade('${key}',${t.id},'name',this.value)"></td>
-    ${isCto?`<td><input value="${t.isin||''}" onchange="upTrade('${key}',${t.id},'isin',this.value)"></td>`:''}
-    ${isCto?`<td><input value="${t.ticker||''}" placeholder="ex: CW8.PA"
-      onchange="upTradeTicker('${key}',${t.id},this.value)"
-      onclick="event.stopPropagation()"></td>`:''}
-    <td onclick="event.stopPropagation()"><select onchange="upTradeCurrency('${key}',${t.id},this.value)">
-      ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(t.currency||'')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
-    </select></td>
-    <!-- ACHAT -->
-    <td style="border-left:2px solid var(--accent)">
-      <input type="date" value="${t.buyDate||''}" onchange="upTrade('${key}',${t.id},'buyDate',this.value)">
-    </td>
-    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.priceBuy||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'priceBuy',this.value)"></td>
-    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.feesBuy!=null?t.feesBuy:''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'feesBuy',this.value)"></td>
-    <td class="${fxBg(t.fxRateBuySource)}" style="font-size:12px">
-      ${fxIco(t.fxRateBuySource)} ${t.fxRateBuy!=null?t.fxRateBuy.toFixed(2):'—'}
-    </td>
-    <td class="btn-col">
-      <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'buy')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
-    </td>
+  const badge=`<span style="font-size:9px;background:#2a0f0f;color:var(--red);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
+  let rows=trades.map((t,i)=>{const o=opts[i];const exists=posExists(type,t.posId);const nm=t.name||'(unnamed)';return`<tr>
+    <!-- IDENTIFICATION (lecture seule) -->
+    <td>${exists
+      ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${nm}</span>`
+      :`${nm}${badge}`}</td>
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${t.isin||''}</td>`:''}
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${t.ticker||''}</td>`:''}
+    <td style="text-align:center;font-size:11px;color:var(--text2)">${t.currency?t.currency.toUpperCase():'—'}</td>
+    <td class="r mono" style="font-size:11px;color:var(--text2)">${fmtNative(t.wacBaseAtSale,t.wacBaseCurrency)}</td>
     <!-- VENTE -->
     <td style="border-left:2px solid var(--accent)">
       <input type="date" value="${t.sellDate||''}" onchange="upTrade('${key}',${t.id},'sellDate',this.value)">
@@ -954,38 +1010,48 @@ function renderES(type){
       ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(2):'—'}
     </td>
     <td class="btn-col">
-      <button onclick="event.stopPropagation();manualFx('${key}',${t.id},'sell')" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
+      <button onclick="event.stopPropagation();manualFx('${key}',${t.id})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
     </td>
-    <!-- TOTAL -->
-    <td class="r mono" style="border-left:2px solid var(--accent)">${fmt(o.tbOpt)}</td>
-    <td class="r mono">${fmt(o.tsOpt)}</td>
+    <!-- TOTAL (devise Options) -->
+    <td class="r mono" style="border-left:2px solid var(--accent)">${o.tbDisplay!=null?fmt(o.tbDisplay):'—'}</td>
+    <td class="r mono">${o.tsOpt!=null?fmt(o.tsOpt):'—'}</td>
     <td class="r mono ${o.gpOpt!=null?gpC(o.gpOpt):''}">${o.gpOpt!=null?fmt(o.gpOpt):'—'}</td>
-    <td class="r mono ${o.pctOpt!=null?gpC(o.pctOpt):''}">${fmtP(o.pctOpt)}</td>
+    <td class="r mono ${o.pctOpt!=null?gpC(o.pctOpt):''}">${o.pctOpt!=null?fmtP(o.pctOpt):'—'}</td>
     <!-- ACTIONS -->
     <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[7,7,5,4,8,5,4,4,2.5,8,5,5,4,4,2.5,7,6,5,4,3]:[8,4,8,6,5,5,2.5,8,5,6,5,5,2.5,8,8,7,4,3]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[9,8,6,5,7,8,7,7,6,6,3,7,7,6,5,3]:[11,6,7,8,8,8,7,7,3,8,8,7,6,6]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 Securities — Sales':'📋 Cryptos — Sales'}</h3>
     <div class="kpis">
       <div class="kpi">
-        <div class="kpi-label">Realized P&L</div>
-        <div class="kpi-value ${gpC(gpTotal)}">${fmt(gpTotal)}</div>
-        ${fxSyncAttempted[key]&&countNoFx>0?`<div style="color:var(--text2);font-size:11px">(${countNoFx} trade${countNoFx>1?'s':''} without FX rate excluded)</div>`:''}
+        <div class="kpi-label">Realized P&L (${cur})</div>
+        <div class="kpi-value ${gpC(kpi.gpTotal)}">${kpi.countFx?fmt(kpi.gpTotal):'—'}</div>
+        ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div style="color:var(--text2);font-size:11px">(${kpi.countNoFx} trade${kpi.countNoFx>1?'s':''} without FX rate excluded)</div>`:''}
       </div>
-      ${fxSyncAttempted[key]&&countNoFx>0?`<div class="kpi" style="border-color:#92400e">
+      <div class="kpi">
+        <div class="kpi-label">Total B (${cur})</div>
+        <div class="kpi-value" style="color:var(--accent)">${kpi.countFx?fmt(kpi.totalB):'—'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Total S (${cur})</div>
+        <div class="kpi-value" style="color:var(--accent)">${kpi.countFx?fmt(kpi.totalS):'—'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">P&L %</div>
+        <div class="kpi-value ${kpi.pctTotal!=null?gpC(kpi.pctTotal):''}">${kpi.pctTotal!=null?fmtP(kpi.pctTotal):'—'}</div>
+      </div>
+      ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div class="kpi" style="border-color:#92400e">
         <div class="kpi-label" style="color:#f59e0b">⚠️ No FX rate</div>
-        <div class="kpi-value" style="color:#f59e0b;font-size:14px">${countNoFx} row${countNoFx>1?'s':''}</div>
+        <div class="kpi-value" style="color:#f59e0b;font-size:14px">${kpi.countNoFx} row${kpi.countNoFx>1?'s':''}</div>
       </div>`:''}
     </div>
     <div class="toolbar">
-      <button class="btn btn-blue" onclick="addTrade('${key}')">+ Add sale</button>
       <button class="btn" onclick="syncFx('${key}')">🔄 Sync FX rates</button>
     </div>
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroup}<thead>
     <tr>
-      <th colspan="${isCto?4:2}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
-      <th colspan="5" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Buy</th>
+      <th colspan="${isCto?5:3}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
       <th colspan="6" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
       <th colspan="4" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Total</th>
       <th></th>
@@ -995,11 +1061,7 @@ function renderES(type){
       ${isCto?'<th>ISIN</th>':''}
       ${isCto?'<th>Ticker</th>':''}
       <th>CCY</th>
-      <th style="border-left:2px solid var(--accent)">Buy date</th>
-      <th class="r">Unit price</th>
-      <th class="r">Fees B</th>
-      <th>FX B</th>
-      <th class="btn-col"></th>
+      <th class="r">Avg cost at sale</th>
       <th style="border-left:2px solid var(--accent)">Sell date</th>
       <th class="r">Qty</th>
       <th class="r">Unit price</th>
@@ -1084,13 +1146,12 @@ function upCryptoTicker(id,newTicker){
   DATA.crypto=DATA.crypto.map(p=>p.id===id?{...p,ticker:t,currency:result.currency,livePrice:null,priceSource:'none',priceDate:null}:p);
   saveData();render();
 }
-async function manualFx(key,id,flow){
+// Cession v2.0 : un seul volet FX (vente) — plus de paramètre flow.
+async function manualFx(key,id){
   const trade=(DATA[key]||[]).find(x=>x.id===id);if(!trade)return;
-  const rateField =flow==='buy'?'fxRateBuy':'fxRateSell';
-  const sourceField=rateField+'Source';
   const cur=trade.currency?trade.currency.toUpperCase():'?';
   const optCur=getCur().code.toUpperCase();
-  const current=trade[rateField];
+  const current=trade.fxRateSell;
   const v=await showPrompt(
     'Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
     current?current.toFixed(4):''
@@ -1099,7 +1160,30 @@ async function manualFx(key,id,flow){
   const p=parseFloat(v.replace(',','.'));
   if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
-  DATA[key]=DATA[key].map(x=>x.id===id?{...x,[rateField]:p,[sourceField]:'manual'}:x);
+  DATA[key]=DATA[key].map(x=>x.id===id?{...x,fxRateSell:p,fxRateSellSource:'manual'}:x);
+  saveData();render();
+}
+// Saisie manuelle du taux FX d'un lot d'achat — symétrique de manualFx (Sales).
+// Débloque wacBase (fxRateSource='manual' équivaut à une sync auto réussie, §4.5).
+async function manualLotFx(type,posId,lotIndex){
+  const pos=(DATA[type]||[]).find(x=>x.id===posId);if(!pos)return;
+  const lot=(pos.purchases||[])[lotIndex];if(!lot)return;
+  const cur=pos.currency?pos.currency.toUpperCase():'?';
+  const optCur=getCur().code.toUpperCase();
+  const current=lot.fxRate;
+  const v=await showPrompt(
+    'Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
+    current?current.toFixed(4):''
+  );
+  if(v===null)return;
+  const p=parseFloat(v.replace(',','.'));
+  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
+  if(current!=null&&p===parseFloat(current.toFixed(4)))return;
+  DATA[type]=DATA[type].map(x=>{
+    if(x.id!==posId)return x;
+    const ps=[...x.purchases];ps[lotIndex]={...ps[lotIndex],fxRate:p,fxRateSource:'manual'};
+    return{...x,purchases:ps};
+  });
   saveData();render();
 }
 async function manualPrice(type,id){
@@ -1125,13 +1209,15 @@ function addPos(type){
 }
 async function delPos(type,id){if(!(await showConfirm('Delete?')))return;DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();}
 function addPurch(type,pid){
-  DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:[...p.purchases,{date:'',qty:0,price:0,fees:0}]}:p);
+  DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:[...p.purchases,{date:'',qty:0,price:0,fees:0,fxRate:null,fxRateSource:null}]}:p);
   saveData();render();
 }
 function upPurch(type,pid,i,f,v){
   DATA[type]=DATA[type].map(p=>{
     if(p.id!==pid)return p;
-    const ps=[...p.purchases];ps[i]={...ps[i],[f]:f==='date'?v:(parseFloat(v)||0)};
+    const ps=[...p.purchases];
+    ps[i]={...ps[i],[f]:f==='date'?v:(parseFloat(v)||0)};
+    if(f==='date')invalidateFxSource(ps[i],'fxRateSource');   // même règle que buyDate/sellDate en Sales
     return{...p,purchases:ps};
   });saveData();render();
 }
@@ -1139,67 +1225,49 @@ function delPurch(type,pid,i){
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:p.purchases.filter((_,j)=>j!==i)}:p);
   saveData();render();
 }
-function addTrade(key){
-  DATA[key].push({id:nextId(DATA[key]),sellDate:'',name:'',isin:'',
-    qSold:0,priceSell:0,feesSell:0,buyDate:'',priceBuy:0,feesBuy:0,
-    ...(key==='ctoTrades'?{ticker:''}:{}),
-    currency:DATA.settings?.currency||'eur',
-    fxRateBuy:null,fxRateBuySource:null,
-    fxRateSell:null,fxRateSellSource:null});
-  saveData();render();
-}
+// sellFromPos — SEULE voie de création d'une cession (addTrade supprimé).
+// posId, name, isin, ticker, currency, wacBaseAtSale, wacBaseCurrency figés à la création.
 function sellFromPos(type,id){
   const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
   const pos=DATA[type].find(p=>p.id===id);
   if(!pos)return;
-  const c=calcPos(pos);
-  if(!(c.tq>0))return;
-  DATA[key].push({id:nextId(DATA[key]),sellDate:'',name:pos.name||'',isin:'',
-    qSold:c.tq,priceSell:0,feesSell:0,buyDate:'',priceBuy:Math.round(c.wac*1e8)/1e8,feesBuy:0,
-    ...(key==='ctoTrades'?{ticker:''}:{}),
-    currency:pos.currency||DATA.settings?.currency||'eur',
-    fxRateBuy:null,fxRateBuySource:null,
+  const c=calcPos(pos,DATA[key]);
+  if(!(c.remaining>0)){toast('⚠️ No remaining quantity to sell','#7f1d1d');return;}
+  if(c.wacBase==null){toast('⚠️ Sync the purchase FX rates before selling','#7f1d1d');return;}
+  DATA[key].push({id:nextId(DATA[key]),posId:id,
+    name:pos.name||'',
+    ...(isCto?{isin:pos.isin||'',ticker:pos.ticker||''}:{}),
+    currency:pos.currency,
+    sellDate:'',qSold:c.remaining,priceSell:0,feesSell:0,
+    wacBaseAtSale:c.wacBase,wacBaseCurrency:getCur().code,
     fxRateSell:null,fxRateSellSource:null});
   saveData();
   switchTab(isCto?'ctoES':'cryptoES');
 }
-function upTradeCurrency(key,id,newCurrency){
-  const t=DATA[key].find(x=>x.id===id);
-  if(!t||(t.currency||'')===newCurrency)return;
-  DATA[key]=DATA[key].map(x=>{
-    if(x.id!==id)return x;
-    const updated={...x,currency:newCurrency};
-    invalidateFxSource(updated,'fxRateBuySource');
-    invalidateFxSource(updated,'fxRateSellSource');
-    return updated;
-  });
-  saveData();render();
-}
+// Champs éditables restants : sellDate, qSold (plafonné), priceSell, feesSell.
+// name/isin/ticker/currency lecture seule (plus d'input dans le template).
 function upTrade(key,id,f,v){
-  const isN=!['sellDate','buyDate','name','isin','currency'].includes(f);
+  if(f==='qSold'){
+    const nv=parseFloat(v)||0;
+    const type=key==='ctoTrades'?'cto':'crypto';
+    const trade=DATA[key].find(t=>t.id===id);
+    const pos=trade?DATA[type].find(p=>p.id===trade.posId):null;
+    if(pos){
+      const tq=calcPos(pos,DATA[key]).tq;
+      const soldByOthers=DATA[key].filter(t=>t.posId===trade.posId&&t.id!==id).reduce((s,t)=>s+(t.qSold||0),0);
+      let cap=tq-soldByOthers;if(cap<0)cap=0;
+      if(nv>cap){toast('⚠️ Quantity exceeds remaining ('+(fmtQ(cap)||'0')+' available)','#7f1d1d');render();return;}
+    }
+    DATA[key]=DATA[key].map(t=>t.id===id?{...t,qSold:nv}:t);
+    saveData();render();return;
+  }
+  const isN=(f!=='sellDate');
   DATA[key]=DATA[key].map(t=>{
     if(t.id!==id)return t;
     const updated={...t,[f]:isN?(parseFloat(v)||0):v};
-    if(f==='buyDate' ) invalidateFxSource(updated,'fxRateBuySource');
     if(f==='sellDate') invalidateFxSource(updated,'fxRateSellSource');
     return updated;
   });
-  saveData();render();
-}
-function upTradeTicker(key,id,newTicker){
-  const t=newTicker.trim();
-  const old=(DATA[key].find(x=>x.id===id)||{}).ticker||'';
-  if(t===old)return;
-  if(!t){
-    DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:''}:x);
-    saveData();render();return;
-  }
-  if(!isValidCtoTicker(t)){
-    toast('❌ Ticker rejected: unrecognized suffix. Accepted suffixes: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY)','#7f1d1d');
-    render();return;
-  }
-  // Ticker et devise sont indépendants pour les CTO Sales : la devise n'est pas touchée.
-  DATA[key]=DATA[key].map(x=>x.id===id?{...x,ticker:t}:x);
   saveData();render();
 }
 async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
