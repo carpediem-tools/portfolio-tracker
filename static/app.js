@@ -15,7 +15,6 @@ let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorM
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
-let histoFocusIdx=null;
 let lotSortAsc=true;   // [v3.0] direction du tri d'affichage des lots (non persisté, affichage seul)
 let saleSortAsc=true;  // [v3.0] direction du tri d'affichage des cessions par sellDate (non persisté)
 let dashChartFilter='10Y';
@@ -483,7 +482,6 @@ function render(){
   else if(currentTab==='cryptoES') app.innerHTML=renderES('crypto');
   else if(currentTab==='info')     app.innerHTML=renderInfo();
   else app.innerHTML=renderHisto();
-  if(histoFocusIdx!==null){const inp=document.querySelector('[data-histo-new]');if(inp){inp.focus();histoFocusIdx=null;}}
 }
 function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
 function toggleExp(k){expanded[k]=!expanded[k];render();}
@@ -1173,16 +1171,14 @@ async function syncHistoFx(){
     render();
   }catch(e){toast('❌ Network error: '+e.message,'#7f1d1d');}
 }
-async function manualHistoFx(i){
+// [v2.0] manualHistoFx — applique un taux manuel saisi dans le champ « FX rate (manual) » de
+// histoDialog (plus de showPrompt inline). Rejet si NaN/≤0 ; no-op si égal au taux courant arrondi
+// à 4 décimales ; sinon fxRate=valeur, fxRateSource='manual' (§4.5). Accepte la virgule décimale.
+function manualHistoFx(i,raw){
   const h=DATA.historique[i];if(!h)return;
-  const cur=h.currency?h.currency.toUpperCase():'?';
-  const optCur=getCur().code.toUpperCase();
+  const p=parseFloat(String(raw).replace(',','.'));
+  if(isNaN(p)||p<=0)return;
   const current=h.fxRate;
-  const v=await showPrompt('Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
-    current?current.toFixed(4):'');
-  if(v===null)return;
-  const p=parseFloat(v.replace(',','.'));
-  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA.historique[i]={...h,fxRate:p,fxRateSource:'manual'};
   saveData();render();
@@ -1294,26 +1290,27 @@ function renderES(type){
 }
 
 // Historique
+// [v2.0] Tableau en AFFICHAGE SEUL — plus aucun input/onchange inline. Édition/création via
+// histoDialog. Indirection tri : paires {h,i} où i = index RÉEL dans DATA.historique, transmis
+// à histoDialog(i)/delHisto(i) — jamais l'index visuel post-tri.
 function renderHisto(){
   const currentYear=new Date().getFullYear();
-  const colgroupHisto=makeColgroup([5,7,12,3,10,10,10,3]);
+  const colgroupHisto=makeColgroup([6,7,12,10,10,10,6]);
   const displayHist=DATA.historique.map((h,i)=>({h,i})).sort((a,b)=>histoSortAsc?a.h.year-b.h.year:b.h.year-a.h.year);
   let rows=displayHist.map(({h,i})=>`<tr>
-    <td class="mono"><input type="number" step="any" value="${h.year!=null?h.year:''}" onblur="upHisto(${i},'year',this.value,this)" onkeydown="if(event.key==='Enter')this.blur()"${i===histoFocusIdx?' data-histo-new':''}></td>
-    <td><select onchange="upHisto(${i},'currency',this.value)">
-      ${['eur','usd','chf','gbp','jpy','hkd','cny'].map(c=>`<option value="${c}"${(h.currency||'eur')===c?' selected':''}>${c.toUpperCase()}</option>`).join('')}
-    </select></td>
+    <td class="mono">${h.year!=null?h.year:'—'}</td>
+    <td style="font-size:11px;color:var(--text2)">${(h.currency||'eur').toUpperCase()}</td>
     <td class="${histoFxBg(h.fxRateSource)}" style="font-size:12px">
       ${histoFxIco(h.fxRateSource)} ${h.fxRate!=null?h.fxRate.toFixed(2):'—'}
       ${h.year===currentYear?`<br><span style="font-size:9px;color:#f59e0b">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
     </td>
-    <td class="btn-col">
-      <button onclick="manualHistoFx(${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
-    </td>
-    <td class="r mono"><input type="number" step="any" value="${h.securities!=null?h.securities:''}" onchange="upHisto(${i},'securities',this.value)"></td>
-    <td class="r mono"><input type="number" step="any" value="${h.crypto||''}" onchange="upHisto(${i},'crypto',this.value)"></td>
+    <td class="r mono">${fmtNative(h.securities||0,h.currency||'eur')}</td>
+    <td class="r mono">${fmtNative(h.crypto||0,h.currency||'eur')}</td>
     <td class="r mono" style="color:var(--text2)">${fmtNative((h.securities||0)+(h.crypto||0),h.currency||'eur')}</td>
-    <td><button class="btn btn-red btn-sm" onclick="delHisto(${i})">🗑</button></td>
+    <td class="btn-col" style="white-space:nowrap">
+      <button class="btn btn-sm" onclick="histoDialog(${i})" title="Edit year">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="delHisto(${i})">🗑</button>
+    </td>
   </tr>`).join('');
   return`<div class="card"><h3>📅 Annual history (Dec 31)</h3>
     <div class="toolbar">
@@ -1321,8 +1318,8 @@ function renderHisto(){
       <button class="btn" onclick="syncHistoFx()">🔄 Sync FX rates</button>
     </div>
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroupHisto}<thead><tr>
-      <th><button class="btn btn-ghost btn-sm" onclick="histoToggleSort()" style="padding:2px 4px">${histoSortAsc?'↑':'↓'}</button> Year</th><th>Currency</th><th>FX</th><th class="btn-col"></th>
-      <th class="r">Securities</th><th class="r">Cryptos</th><th class="r">Total</th><th></th>
+      <th><button class="btn btn-ghost btn-sm" onclick="histoToggleSort()" style="padding:2px 4px">${histoSortAsc?'↑':'↓'}</button> Year</th><th>Currency</th><th>FX</th>
+      <th class="r">Securities</th><th class="r">Cryptos</th><th class="r">Total</th><th class="btn-col"></th>
     </tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
@@ -1616,29 +1613,78 @@ function upTrade(key,id,patch){
   saveData();render();
 }
 async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
-function addHisto(){
-  if(DATA.historique.some(h=>h.year==null))return;
-  DATA.historique.push({year:null,securities:0,crypto:0,total:0,currency:getCur().code,fxRate:null,fxRateSource:null});
-  histoFocusIdx=DATA.historique.length-1;
-  render();
+// [v2.0] addHisto — ouvre histoDialog en création (plus d'écriture d'une ligne vide directe).
+function addHisto(){histoDialog();}
+// [v2.0] histoDialog — popup History PARTAGÉE création/édition (via showForm). Création si index
+// omis, édition sinon. Champs year, currency, securities, crypto, et FX rate (manual) en édition.
+// Contrôles bloquants : année invalide/<1900/future/dupliquée, taux manuel NaN/≤0. Écrit à la validation.
+// Indirection tri : `index` reçu = index RÉEL dans DATA.historique (jamais l'index visuel post-tri).
+async function histoDialog(index){
+  const isEdit=index!=null;
+  const h=isEdit?DATA.historique[index]:null;
+  if(isEdit&&!h)return;
+  const currentYear=new Date().getFullYear();
+  const years=DATA.historique.map(e=>e.year).filter(y=>y!=null);
+  const defYear=isEdit?h.year:(years.length?Math.max(...years)+1:currentYear);
+  const curs=['eur','usd','chf','gbp','jpy','hkd','cny'];
+  const fields=[
+    {key:'year',label:'Year',type:'number',value:defYear!=null?defYear:''},
+    {key:'currency',label:'Currency',type:'select',value:isEdit?(h.currency||'eur'):getCur().code,
+      options:curs.map(c=>({value:c,label:c.toUpperCase()}))},
+    {key:'securities',label:'Securities',type:'number',value:isEdit&&h.securities?h.securities:''},
+    {key:'crypto',label:'Cryptos',type:'number',value:isEdit&&h.crypto?h.crypto:''},
+  ];
+  // FX manuel : champ 'text' (accepte la virgule décimale — type=number la rejetterait), édition seule.
+  if(isEdit)fields.push({key:'fxManual',label:'FX rate (manual)',type:'text',
+    value:h.fxRate!=null?h.fxRate.toFixed(4):''});
+  const values=await showForm({
+    title:isEdit?'Edit year':'Add year',
+    fields,
+    validate:vals=>{
+      const raw=String(vals.year).trim();
+      const y=parseInt(raw);
+      if(raw===''||isNaN(y))return 'A valid year is required.';
+      if(y<1900)return "That year? You definitely weren't born yet.";
+      if(y>currentYear)return 'Year '+y+' is in the future.';                                   // YEAR_IN_FUTURE
+      if(DATA.historique.some((e,j)=>j!==index&&e.year===y))return 'Year '+y+' already exists.'; // YEAR_DUPLICATE
+      if(isEdit&&vals.fxManual!==''){
+        const p=parseFloat(String(vals.fxManual).replace(',','.'));
+        if(isNaN(p)||p<=0)return 'FX rate must be a number greater than 0.';                     // FX_RATE_INVALID
+      }
+      return null;
+    }
+  });
+  if(values==null)return;   // Annuler → aucune écriture
+  const patch={
+    year:parseInt(String(values.year).trim()),
+    currency:values.currency,
+    securities:parseFloat(values.securities)||0,
+    crypto:parseFloat(values.crypto)||0
+  };
+  if(!isEdit){
+    // Création : ligne complète, sans champ 'classes' (§4.1/§4.6).
+    DATA.historique.push({year:patch.year,currency:patch.currency,
+      securities:patch.securities,crypto:patch.crypto,total:patch.securities+patch.crypto,
+      fxRate:null,fxRateSource:null});
+    saveData();render();
+  }else{
+    upHisto(index,patch);   // invalide fxRateSource → 'ko' si year/currency change
+    // FX manuel appliqué APRÈS upHisto : un taux saisi l'emporte sur l'invalidation year/currency.
+    if(values.fxManual!=='')manualHistoFx(index,values.fxManual);
+  }
 }
-function upHisto(i,f,v,el){
+// [v2.0] upHisto — point d'écriture appelé par la validation de histoDialog (plus par onchange).
+// patch = {year,currency,securities,crypto} déjà validés. Recalcule total ; invalide fxRateSource
+// → 'ko' si year OU currency change (inconditionnel, y compris depuis 'manual', §4.2).
+function upHisto(i,patch){
   const h=DATA.historique[i];
   if(!h)return;
-  if(f==='currency'){h.currency=v;invalidateFxSource(h,'fxRateSource');}
-  else if(f==='year'){
-    const raw=String(v).trim();
-    if(raw===''){DATA.historique.splice(i,1);saveData();render();return;}
-    const y=parseInt(raw)||0;
-    if(y===h.year)return;
-    if(y<1900){toast("⚠️ That year? You definitely weren't born yet.",'#7f1d1d');if(el)setTimeout(()=>el.focus(),0);return;}
-    if(y>new Date().getFullYear()){toast('Year '+y+' is in the future','#7f1d1d');return;}
-    if(DATA.historique.some((e,j)=>j!==i&&e.year===y)){toast('Year '+y+' already exists','#7f1d1d');return;}
-    h.year=y;invalidateFxSource(h,'fxRateSource');
-  }
-  else if(f==='crypto'){h.crypto=parseFloat(v)||0;}
-  else if(f==='securities'){h.securities=parseFloat(v)||0;}
-  h.total=(h.securities||0)+(h.crypto||0);
+  const changed=(patch.year!==h.year)||(patch.currency!==h.currency);
+  const u={...h,year:patch.year,currency:patch.currency,
+           securities:patch.securities,crypto:patch.crypto};
+  u.total=(u.securities||0)+(u.crypto||0);
+  if(changed)invalidateFxSource(u,'fxRateSource');
+  DATA.historique[i]=u;
   saveData();render();
 }
 async function delHisto(i){if(!(await showConfirm('Delete?')))return;DATA.historique.splice(i,1);saveData();render();}
