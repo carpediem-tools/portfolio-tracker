@@ -186,7 +186,7 @@ function showForm(cfg){
         control=`<select id="${id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${o.value===f.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
       }else{
         const t=f.type||'text';
-        control=`<input id="${id}" type="${t}"${t==='number'?' step="any"':''} value="${esc(f.value)}" placeholder="${esc(f.placeholder||'')}">`;
+        control=`<input id="${id}" type="${t}"${t==='number'?' step="any"':''}${f.maxlength?` maxlength="${f.maxlength}"`:''} value="${esc(f.value)}" placeholder="${esc(f.placeholder||'')}">`;
       }
       return `<div class="form-row"><label for="${id}">${esc(f.label)}</label>${control}</div>`;
     }).join('');
@@ -1372,7 +1372,7 @@ async function posDialog(type,id){
   if(isEdit&&!pos)return;
   const brokers=DATA.settings.brokers||[];
   const classes=DATA.settings.classes||[];
-  const fields=[{key:'name',label:'Name',type:'text',value:pos?pos.name||'':''}];
+  const fields=[{key:'name',label:'Name',type:'text',value:pos?pos.name||'':'',maxlength:25}];
   if(isCto)fields.push({key:'isin',label:'ISIN',type:'text',value:pos?pos.isin||'':''});
   fields.push({key:'ticker',label:isCto?'Yahoo Ticker':'Ticker (id:currency)',type:'text',
     value:pos?pos.ticker||'':'',placeholder:isCto?'ex: CW8.PA':'ex: bitcoin:usd'});
@@ -1386,8 +1386,11 @@ async function posDialog(type,id){
     title:isEdit?'Edit position':'New position',
     fields,
     validate:vals=>{
-      if(!(vals.name||'').trim())
+      const name=(vals.name||'').trim();
+      if(!name)
         return 'Name is required.';
+      if(name.length>25)
+        return 'Name must be 25 characters or fewer.';
       const t=(vals.ticker||'').trim();
       if(!t)
         return isCto?'Ticker is required.':'Ticker is required (format id:currency, e.g. bitcoin:usd).';
@@ -1431,6 +1434,7 @@ async function lotDialog(type,posId,lotIndex){
     ],
     validate:vals=>{
       if(!vals.date||!vals.date.trim())return 'A date is required.';                 // LOT_DATE_REQUIRED
+      if(vals.date.trim()>isoToday())return 'Date cannot be in the future.';          // LOT_DATE_FUTURE
       const q=parseFloat(vals.qty);
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';          // LOT_QTY_INVALID
       if(vals.price!==''&&(isNaN(parseFloat(vals.price))||parseFloat(vals.price)<0))return 'Unit price must be a number ≥ 0.';
@@ -1566,6 +1570,7 @@ async function saleDialog(type,posId,tradeId){
     fields,
     validate:vals=>{
       if(!vals.sellDate||!vals.sellDate.trim())return 'A sell date is required.';               // SELLDATE_REQUIRED
+      if(vals.sellDate.trim()>isoToday())return 'Sell date cannot be in the future.';            // SELLDATE_FUTURE
       const q=parseFloat(vals.qSold);
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';
       const cap=maxSellableAt(pos,DATA[key],vals.sellDate.trim(),isEdit?tradeId:undefined);
