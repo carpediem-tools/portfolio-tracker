@@ -16,6 +16,7 @@ let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
 let histoFocusIdx=null;
+let lotSortAsc=true;   // [v3.0] direction du tri d'affichage des lots (non persisté, affichage seul)
 let dashChartFilter='10Y';
 const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
@@ -166,6 +167,66 @@ function showConfirm(message){
   });
 }
 
+// ---- Modale multi-champs générique (fondation des popups posDialog/lotDialog, v3.0) ----
+// Premier mécanisme de popup multi-champs du projet (au-delà de showPrompt/showConfirm à
+// champ unique). Réutilisable : Sales (B4) et History (B5) s'y appuieront (saleDialog/histoDialog).
+//   showForm({title, fields:[{key,label,type,value,options?,placeholder?}], validate})
+//     type ∈ 'text' | 'date' | 'number' | 'select' (options=[{value,label}] pour select)
+//     validate(values) → chaîne d'erreur (Valider bloqué, popup maintenue) ou null (résolu)
+//   Résout avec l'objet {key:value} à la validation, ou null à l'annulation.
+// N'écrit rien : l'appelant écrit en données à partir de la valeur résolue.
+let _formCfg=null,_formResolve=null;
+function showForm(cfg){
+  return new Promise(resolve=>{
+    _formResolve=resolve;_formCfg=cfg;
+    const fieldsHtml=cfg.fields.map(f=>{
+      const id='form-f-'+f.key;
+      let control;
+      if(f.type==='select'){
+        control=`<select id="${id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${o.value===f.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
+      }else{
+        const t=f.type||'text';
+        control=`<input id="${id}" type="${t}"${t==='number'?' step="any"':''} value="${esc(f.value)}" placeholder="${esc(f.placeholder||'')}">`;
+      }
+      return `<div class="form-row"><label for="${id}">${esc(f.label)}</label>${control}</div>`;
+    }).join('');
+    const html=`<div id="form-overlay" class="form-overlay" onclick="if(event.target===this)_formCancel()">
+      <div class="form-box">
+        <h3>${esc(cfg.title)}</h3>
+        ${fieldsHtml}
+        <p id="form-error" class="form-error" style="display:none"></p>
+        <div class="form-btns">
+          <button class="btn btn-ghost" onclick="_formCancel()">Cancel</button>
+          <button class="btn btn-blue" onclick="_formSubmit()">Validate</button>
+        </div>
+      </div></div>`;
+    document.body.insertAdjacentHTML('beforeend',html);
+    document.addEventListener('keydown',_formKeydown,true);
+    setTimeout(()=>{const first=document.querySelector('#form-overlay input,#form-overlay select');if(first)first.focus();},30);
+  });
+}
+function _formKeydown(e){
+  if(!document.getElementById('form-overlay'))return;
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();_formCancel();}
+  else if(e.key==='Enter'&&e.target.tagName!=='SELECT'){e.preventDefault();e.stopPropagation();_formSubmit();}
+}
+function _formClose(result){
+  const ov=document.getElementById('form-overlay');
+  if(ov)ov.remove();
+  document.removeEventListener('keydown',_formKeydown,true);
+  const r=_formResolve;_formResolve=null;_formCfg=null;
+  if(r)r(result);
+}
+function _formSubmit(){
+  if(!_formCfg)return;
+  const values={};
+  _formCfg.fields.forEach(f=>{const el=document.getElementById('form-f-'+f.key);values[f.key]=el?el.value:'';});
+  const err=_formCfg.validate?_formCfg.validate(values):null;
+  if(err){const e=document.getElementById('form-error');e.textContent=err;e.style.display='block';return;}
+  _formClose(values);
+}
+function _formCancel(){_formClose(null);}
+
 // Helpers
 const CURRENCIES={eur:{symbol:'€',pos:'after',code:'eur'},usd:{symbol:'$',pos:'before',code:'usd'},chf:{symbol:'CHF',pos:'after',code:'chf'},gbp:{symbol:'£',pos:'before',code:'gbp'},jpy:{symbol:'¥',pos:'before',code:'jpy'},hkd:{symbol:'HK$',pos:'before',code:'hkd'},cny:{symbol:'CN¥',pos:'before',code:'cny'}};
 function getCur(){return CURRENCIES[(DATA&&DATA.settings&&DATA.settings.currency)||'eur']||CURRENCIES.eur;}
@@ -299,31 +360,78 @@ function isoToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d
 function isoNow(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
 const gpC=n=>n>=0?'gain':'loss';
 const nextId=a=>Math.max(0,...a.map(x=>x.id))+1;
-// calcPos(p, trades) — partagée intégralement entre Securities (cto[]) et Cryptos (crypto[]).
+// Échappement HTML pour les valeurs injectées dans les popups (attributs value / contenu).
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// calcPos(p, trades) — v3.0, partagée intégralement entre Securities (cto[]) et Cryptos (crypto[]).
 // `trades` = cessions du bloc Sales (ctoTrades ou cryptoTrades) ; filtrées par posId
-// pour dériver la quantité réellement détenue (remaining). Voir spec Securities v2.0 §4.5.
+// pour dériver la quantité réellement détenue (remaining) ET le solde glissant temporel.
+// Voir spec Securities v3.0 §4.5 / §4.5bis.
+//   - wacBaseAt(T) : accesseur DATÉ (lots date ≤ T), recalculé à chaque appel — jamais figé.
+//   - wacBase      : résumé de la position (tous lots) — tout-ou-rien non restreint.
+//   - soldeMin     : minimum du solde cumulé sur la chronologie (achats + / ventes −),
+//                    distinct de remaining (solde final). soldeMin < 0 ⇒ brèche temporelle.
 function calcPos(p,trades=[]){
-  const tq=p.purchases.reduce((s,x)=>s+(x.qty||0),0);
-  const ti=p.purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0)),0);
-  // tiBase / wacBase : tout-ou-rien. Le test porte UNIQUEMENT sur fxRateSource
+  const purchases=p.purchases||[];
+  const tq=purchases.reduce((s,x)=>s+(x.qty||0),0);
+  const ti=purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0)),0);
+  // Le test de résolution FX porte UNIQUEMENT sur fxRateSource
   // (jamais sur fxRate!=null : un fxRate périmé reste non-null après invalidation).
   const fxResolved=s=>s==='ok'||s==='auto'||s==='manual';
-  const allFxResolved=p.purchases.every(x=>fxResolved(x.fxRateSource));   // vacuément vrai si aucun lot (tiBase=0, mais wacBase reste indisponible car tq=0)
-  const tiBase=allFxResolved
-    ?p.purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0))*(x.fxRate||0),0)
-    :null;
   const wac=tq?ti/tq:0;                              // coût moyen natif — invariant aux ventes (ti/tq, jamais ti/remaining)
-  const wacBase=(tq&&tiBase!=null)?tiBase/tq:null;   // coût moyen en devise de reporting
-  const soldQty=(trades||[]).filter(t=>t.posId===p.id).reduce((s,t)=>s+(t.qSold||0),0);
-  const remaining=tq-soldQty;
-  const negRem=remaining<0;                          // incohérence : plus vendu qu'acheté → valo/gp indisponibles (§4.5bis)
+
+  // Accesseur DATÉ (v3.0) : coût moyen pondéré des seuls lots date ≤ T, en devise de reporting.
+  // Règle FX tout-ou-rien DATE-RESTREINTE : ne teste que les lots ≤ T. Un lot postérieur non
+  // résolu ne bloque jamais wacBaseAt(T). Filtrage par date, jamais un gel/instantané :
+  // un lot antérieur ajouté après coup corrige le résultat au prochain rendu.
+  function wacBaseAt(T){
+    if(T==null)return null;
+    let tqUpTo=0,tiBaseUpTo=0,allResolved=true;
+    for(const x of purchases){
+      if(!x.date||x.date>T)continue;
+      tqUpTo+=(x.qty||0);
+      if(!fxResolved(x.fxRateSource))allResolved=false;
+      tiBaseUpTo+=((x.qty||0)*(x.price||0)+(x.fees||0))*(x.fxRate||0);
+    }
+    if(tqUpTo<=0||!allResolved)return null;
+    return tiBaseUpTo/tqUpTo;
+  }
+
+  // Résumé de la position (carte) : wacBase sur TOUS les lots (règle tout-ou-rien non restreinte).
+  const allFxResolved=purchases.every(x=>fxResolved(x.fxRateSource));   // vacuément vrai si aucun lot, mais wacBase reste null car tq=0
+  const wacBase=(tq>0&&allFxResolved)
+    ?purchases.reduce((s,x)=>s+((x.qty||0)*(x.price||0)+(x.fees||0))*(x.fxRate||0),0)/tq
+    :null;
+
+  const linked=(trades||[]).filter(t=>t.posId===p.id);
+  const soldQty=linked.reduce((s,t)=>s+(t.qSold||0),0);
+  const remaining=tq-soldQty;                        // solde FINAL
+
+  // Solde glissant temporel (§4.5bis) : achats (+) et ventes (−) ordonnés par date croissante,
+  // achats avant ventes à date égale (on peut vendre ce qu'on a acheté le jour même).
+  const events=[];
+  purchases.forEach(x=>{if(x.date)events.push({date:x.date,amount:(x.qty||0)});});
+  linked.forEach(t=>{if(t.sellDate)events.push({date:t.sellDate,amount:-(t.qSold||0)});});
+  events.sort((a,b)=>{
+    if(a.date<b.date)return -1;
+    if(a.date>b.date)return 1;
+    return (a.amount>0?0:1)-(b.amount>0?0:1);        // départage à date égale : achats (+) avant ventes (−)
+  });
+  let solde=0,soldeMin=0,breachDate=null;
+  for(const e of events){
+    solde+=e.amount;
+    if(solde<soldeMin)soldeMin=solde;
+    if(solde<0&&breachDate==null)breachDate=e.date;  // première date où le solde devient négatif
+  }
+
+  // Dès soldeMin < 0 (brèche locale) OU remaining < 0 : aucun calcul sur quantité négative.
+  const unavail=remaining<0||soldeMin<0;
   // investedRemaining : DÉJÀ en devise de reporting (dérive de wacBase). Ne jamais ré-envelopper dans convert().
-  const investedRemaining=(wacBase!=null&&!negRem)?remaining*wacBase:null;
-  const valo=negRem?null:(p.livePrice?remaining*p.livePrice:0);   // en devise NATIVE
+  const investedRemaining=(wacBase!=null&&!unavail)?remaining*wacBase:null;
+  const valo=unavail?null:(p.livePrice?remaining*p.livePrice:0);   // en devise NATIVE
   const valoBase=(valo!=null&&p.currency)?convert(valo,p.currency,getCur().code):null;
   const gp=(valoBase!=null&&investedRemaining!=null)?valoBase-investedRemaining:null;
   const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
-  return{tq,ti,tiBase,wac,wacBase,soldQty,remaining,investedRemaining,valo,gp,evol};
+  return{tq,ti,wac,wacBase,wacBaseAt,soldQty,remaining,soldeMin,breachDate,investedRemaining,valo,gp,evol};
 }
 // Cession v2.0 : plus de volet achat natif. tb = qSold × wacBaseAtSale
 // (déjà en devise de reporting figée wacBaseCurrency) — toujours calculable.
@@ -785,21 +893,19 @@ function renderSpot(type){
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
+    const breach=c.soldeMin<0;
+    // [v3.0] Cellules en affichage seul — clic sur le nom = popup identité (édition, §4.13).
     rows+=`<tr style="cursor:pointer" onclick="toggleExp('${k}')">
       <td style="text-align:center;color:var(--text2);font-size:10px">${exp?'▲':'▼'}</td>
-      <td><input value="${p.name||''}" onchange="upPos('${type}',${p.id},'name',this.value)" onclick="event.stopPropagation()"></td>
-      ${isCto?`<td><input value="${p.isin||''}" onchange="upPos('${type}',${p.id},'isin',this.value)" onclick="event.stopPropagation()"></td>`:''}
-      <td><input value="${p.ticker||''}" placeholder="${isCto?'ex: CW8.PA':'ex: bitcoin:usd'}" onchange="${isCto?`upCtoTicker(${p.id},this.value)`:`upCryptoTicker(${p.id},this.value)`}" onclick="event.stopPropagation()"></td>
-      ${isCto?`<td onclick="event.stopPropagation()"><select onchange="upPos('cto',${p.id},'broker',this.value)">
-        <option value=""${!p.broker?' selected':''}></option>
-        ${(DATA.settings.brokers||[]).map(b=>`<option${p.broker===b?' selected':''}>${b}</option>`).join('')}</select></td>
-      <td onclick="event.stopPropagation()"><select onchange="upPos('cto',${p.id},'classe',this.value)">
-        <option value=""${!p.classe?' selected':''}></option>
-        ${(DATA.settings.classes||[]).map(cl=>`<option value="${cl}"${p.classe===cl?' selected':''}>${cl}</option>`).join('')}</select></td>`:''}
+      <td><span class="cell-edit" onclick="event.stopPropagation();posDialog('${type}',${p.id})" title="Edit position">${esc(p.name)||'<span style="color:var(--text2)">(unnamed)</span>'}</span></td>
+      ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.isin)}</td>`:''}
+      <td style="font-size:11px;color:var(--text2)">${esc(p.ticker)}</td>
+      ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.broker)}</td>
+      <td style="font-size:11px;color:var(--text2)">${esc(p.classe)}</td>`:''}
       <td style="text-align:center;font-size:11px;color:var(--text2)">${p.currency?p.currency.toUpperCase():'—'}</td>
-      <td class="r mono computed ${c.remaining<0?'error-cell':''}">${c.soldQty>0
+      <td class="r mono computed ${(c.remaining<0||breach)?'error-cell':''}">${c.soldQty>0
         ?`<div style="color:var(--text2);font-size:10px">${fmtQ(c.tq)}</div><div style="color:var(--red);font-size:10px">−${fmtQ(c.soldQty)}</div><div style="border-top:1px solid var(--border);font-weight:700">${fmtQ(c.remaining)||'0'}</div>`
-        :fmtQ(c.remaining)}</td>
+        :fmtQ(c.remaining)}${breach?`<div style="color:var(--red);font-size:9px">Negative stock at ${c.breachDate}</div>`:''}</td>
       <td class="r mono computed">${c.wac>0?fmtNative(c.wac,p.currency):''}</td>
       <td class="r mono computed">${c.investedRemaining!=null?fmt(c.investedRemaining):''}</td>
       <td class="${pBg(p)} mono">
@@ -817,23 +923,32 @@ function renderSpot(type){
     </tr>`;
     if(exp){
       let sub='';
-      p.purchases.forEach((pu,i)=>{
+      // [v3.0] Tri d'AFFICHAGE des lots par date sur une copie {lot, i} — l'index réel i
+      // est préservé pour upPurch/delPurch/manualLotFx (jamais de tri de purchases[] en place).
+      const lotEntries=p.purchases.map((lot,i)=>({lot,i})).sort((a,b)=>{
+        const da=a.lot.date||'',db=b.lot.date||'';
+        if(da<db)return lotSortAsc?-1:1;
+        if(da>db)return lotSortAsc?1:-1;
+        return 0;
+      });
+      lotEntries.forEach(({lot:pu,i})=>{
         const ti2=(pu.qty||0)*(pu.price||0)+(pu.fees||0);
         const lotAvgCost=(pu.qty||0)?ti2/(pu.qty||0):0;
-        sub+=`<tr>
-          <td><input type="date" value="${pu.date||''}" onchange="upPurch('${type}',${p.id},${i},'date',this.value)"></td>
-          <td class="r"><input type="number" step="any" value="${pu.qty||''}" onchange="upPurch('${type}',${p.id},${i},'qty',this.value)"></td>
-          <td class="r"><input type="number" step="any" value="${pu.price||''}" onchange="upPurch('${type}',${p.id},${i},'price',this.value)"></td>
-          <td class="r"><input type="number" step="any" value="${pu.fees||''}" onchange="upPurch('${type}',${p.id},${i},'fees',this.value)"></td>
+        // Ligne en affichage seul — clic = popup lot (édition, §4.13) ; boutons FX/suppr. isolés.
+        sub+=`<tr style="cursor:pointer" onclick="lotDialog('${type}',${p.id},${i})" title="Edit lot">
+          <td class="mono">${pu.date||'<span style="color:var(--red)">— required —</span>'}</td>
+          <td class="r mono">${fmtQ(pu.qty)}</td>
+          <td class="r mono">${pu.price!=null?fmtNative(pu.price,p.currency):''}</td>
+          <td class="r mono">${pu.fees!=null?fmtNative(pu.fees,p.currency):''}</td>
           <td class="r mono">${fmtNative(ti2,p.currency)}</td>
           <td class="r mono">${lotAvgCost?fmtNative(lotAvgCost,p.currency):''}</td>
           <td class="${fxBg(pu.fxRateSource)}" style="font-size:12px">
             ${fxIco(pu.fxRateSource)} ${pu.fxRate!=null?pu.fxRate.toFixed(2):'—'}
           </td>
           <td class="btn-col">
-            <button onclick="manualLotFx('${type}',${p.id},${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
+            <button onclick="event.stopPropagation();manualLotFx('${type}',${p.id},${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
           </td>
-          <td><button class="btn btn-red btn-sm" onclick="delPurch('${type}',${p.id},${i})">✕</button></td></tr>`;
+          <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPurch('${type}',${p.id},${i})">✕</button></td></tr>`;
       });
       if(p.purchases.length){
         const tf=p.purchases.reduce((s,x)=>s+(x.fees||0),0);
@@ -851,12 +966,12 @@ function renderSpot(type){
         <div class="sub-header">
           <span class="sub-title">Purchase detail — ${p.name||'(unnamed)'}</span>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Buy</button>
+            <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Add lot</button>
             <button class="btn btn-blue btn-sm" onclick="sellFromPos('${type}',${p.id})">- Sell</button>
           </div>
         </div>
         <table class="resp-tbl" style="min-width:500px">${colgroupSub}<thead><tr>
-          <th>Date</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Fees</th>
+          <th><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();toggleLotSort()" style="padding:2px 4px">${lotSortAsc?'↑':'↓'}</button> Date</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Fees</th>
           <th class="r">Total invested</th><th class="r">Lot avg cost</th><th>FX</th><th class="btn-col"></th><th></th>
         </tr></thead><tbody>${sub}</tbody></table>
       </div></td></tr>`;
@@ -1149,7 +1264,10 @@ function renderHisto(){
 function histoToggleSort(){histoSortAsc=!histoSortAsc;render();}
 
 // Actions utilisateur
-function upPos(type,id,f,v){DATA[type]=DATA[type].map(p=>p.id===id?{...p,[f]:v}:p);saveData();render();}
+function toggleLotSort(){lotSortAsc=!lotSortAsc;render();}   // [v3.0] affichage seul, non persisté
+// [v3.0] Point d'écriture identité — appelé par la validation de posDialog (plus par onchange de cellule).
+// `patch` = sous-ensemble de {name,isin,broker,classe} (jamais le ticker, qui passe par up*Ticker).
+function upPos(type,id,patch){DATA[type]=DATA[type].map(p=>p.id===id?{...p,...patch}:p);saveData();render();}
 function upCtoTicker(id,newTicker){
   const t=newTicker.trim();
   const old=(DATA.cto.find(p=>p.id===id)||{}).ticker||'';
@@ -1180,6 +1298,85 @@ function upCryptoTicker(id,newTicker){
   }
   DATA.crypto=DATA.crypto.map(p=>p.id===id?{...p,ticker:t,currency:result.currency,livePrice:null,priceSource:'none',priceDate:null}:p);
   saveData();render();
+}
+// [v3.0] posDialog — popup identité PARTAGÉE Securities/Cryptos, paramétrée par type.
+// En mode crypto : masque isin/broker/classe et route la validation du ticker sur parseCryptoTicker.
+// Création si id omis, édition sinon. N'écrit qu'à la validation ; Annuler n'écrit rien.
+async function posDialog(type,id){
+  const isCto=type==='cto';
+  const isEdit=id!=null;
+  const pos=isEdit?DATA[type].find(p=>p.id===id):null;
+  if(isEdit&&!pos)return;
+  const brokers=DATA.settings.brokers||[];
+  const classes=DATA.settings.classes||[];
+  const fields=[{key:'name',label:'Name',type:'text',value:pos?pos.name||'':''}];
+  if(isCto)fields.push({key:'isin',label:'ISIN',type:'text',value:pos?pos.isin||'':''});
+  fields.push({key:'ticker',label:isCto?'Yahoo Ticker':'Ticker (id:currency)',type:'text',
+    value:pos?pos.ticker||'':'',placeholder:isCto?'ex: CW8.PA':'ex: bitcoin:usd'});
+  if(isCto){
+    fields.push({key:'broker',label:'Broker',type:'select',value:pos?pos.broker||'':(brokers[0]||''),
+      options:[{value:'',label:''},...brokers.map(b=>({value:b,label:b}))]});
+    fields.push({key:'classe',label:'Class',type:'select',value:pos?pos.classe||'':(classes[0]||''),
+      options:[{value:'',label:''},...classes.map(cl=>({value:cl,label:cl}))]});
+  }
+  const values=await showForm({
+    title:isEdit?'Edit position':'New position',
+    fields,
+    validate:vals=>{
+      const t=(vals.ticker||'').trim();
+      if(t){
+        if(isCto&&!isValidCtoTicker(t))
+          return 'Ticker rejected: unrecognized suffix. Accepted: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY).';
+        if(!isCto&&!parseCryptoTicker(t))
+          return 'Crypto ticker rejected. Expected id:currency (e.g. bitcoin:usd). Currencies: eur, usd, chf, gbp, jpy, hkd, cny.';
+      }
+      return null;
+    }
+  });
+  if(values==null)return;                       // Annuler → aucune écriture
+  const t=(values.ticker||'').trim();
+  if(isEdit){
+    // Identité (hors ticker) via upPos ; ticker via up*Ticker (invalidation §4.2 si changé).
+    upPos(type,id,isCto?{name:values.name,isin:values.isin,broker:values.broker,classe:values.classe}:{name:values.name});
+    if(isCto)upCtoTicker(id,t); else upCryptoTicker(id,t);
+  }else{
+    const newId=nextId(DATA[type]);
+    DATA[type].push(isCto
+      ?{id:newId,name:values.name,isin:values.isin,ticker:'',broker:values.broker,classe:values.classe,
+        currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null}
+      :{id:newId,name:values.name,ticker:'',currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null});
+    if(t){ if(isCto)upCtoTicker(newId,t); else upCryptoTicker(newId,t); }   // pose ticker + currency (crypto)
+    else { saveData();render(); }
+  }
+}
+// [v3.0] lotDialog — popup lot d'achat PARTAGÉE. `date` obligatoire (LOT_DATE_REQUIRED).
+// Création si lotIndex omis, édition sinon. L'écriture passe par upPurch à la validation.
+async function lotDialog(type,posId,lotIndex){
+  const pos=(DATA[type]||[]).find(p=>p.id===posId);
+  if(!pos)return;
+  const isEdit=lotIndex!=null;
+  const lot=isEdit?(pos.purchases||[])[lotIndex]:null;
+  if(isEdit&&!lot)return;
+  const values=await showForm({
+    title:isEdit?'Edit lot':'Add lot',
+    fields:[
+      {key:'date',label:'Date',type:'date',value:lot?lot.date||'':''},
+      {key:'qty',label:'Quantity',type:'number',value:lot&&lot.qty?lot.qty:''},
+      {key:'price',label:'Unit price',type:'number',value:lot&&lot.price?lot.price:''},
+      {key:'fees',label:'Fees',type:'number',value:lot&&lot.fees?lot.fees:''}
+    ],
+    validate:vals=>{
+      if(!vals.date||!vals.date.trim())return 'A date is required.';                 // LOT_DATE_REQUIRED
+      const q=parseFloat(vals.qty);
+      if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';          // LOT_QTY_INVALID
+      if(vals.price!==''&&(isNaN(parseFloat(vals.price))||parseFloat(vals.price)<0))return 'Unit price must be a number ≥ 0.';
+      if(vals.fees!==''&&(isNaN(parseFloat(vals.fees))||parseFloat(vals.fees)<0))return 'Fees must be a number ≥ 0.';
+      return null;
+    }
+  });
+  if(values==null)return;
+  upPurch(type,posId,lotIndex,{date:values.date.trim(),qty:parseFloat(values.qty)||0,
+    price:parseFloat(values.price)||0,fees:parseFloat(values.fees)||0});
 }
 // Cession v2.0 : un seul volet FX (vente) — plus de paramètre flow.
 async function manualFx(key,id){
@@ -1234,28 +1431,30 @@ async function manualPrice(type,id){
   DATA[type]=DATA[type].map(x=>x.id===id?{...x,livePrice:p,priceSource:'manual',priceDate:now}:x);
   saveData();render();
 }
-function addPos(type){
-  DATA[type].push(type==='cto'
-    ?{id:nextId(DATA[type]),name:'',isin:'',ticker:'',broker:(DATA.settings.brokers||[])[0]||'',classe:(DATA.settings.classes||[])[0]||'',
-      currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null}
-    :{id:nextId(DATA[type]),name:'',ticker:'',
-      currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null});
-  saveData();render();
-}
+// [v3.0] addPos/addPurch ouvrent la popup au lieu d'écrire une ligne vide — écriture à la validation.
+function addPos(type){posDialog(type);}
 async function delPos(type,id){if(!(await showConfirm('Delete?')))return;DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();}
-function addPurch(type,pid){
-  DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:[...p.purchases,{date:'',qty:0,price:0,fees:0,fxRate:null,fxRateSource:null}]}:p);
-  saveData();render();
-}
-function upPurch(type,pid,i,f,v){
+function addPurch(type,pid){lotDialog(type,pid);}
+// [v3.0] Point d'écriture lot — appelé par lotDialog. Création si lotIndex null, sinon édition.
+// `patch` = {date,qty,price,fees} déjà parsés/validés par lotDialog.
+// Édition avec date modifiée ⇒ invalidation fxRateSource → 'ko' (resync requise).
+function upPurch(type,pid,lotIndex,patch){
   DATA[type]=DATA[type].map(p=>{
     if(p.id!==pid)return p;
-    const ps=[...p.purchases];
-    ps[i]={...ps[i],[f]:f==='date'?v:(parseFloat(v)||0)};
-    if(f==='date')invalidateFxSource(ps[i],'fxRateSource');   // même règle que buyDate/sellDate en Sales
+    const ps=[...(p.purchases||[])];
+    if(lotIndex==null){
+      ps.push({date:patch.date,qty:patch.qty,price:patch.price,fees:patch.fees,fxRate:null,fxRateSource:null});
+    }else{
+      const old=ps[lotIndex]||{};
+      const dateChanged=(old.date||'')!==patch.date;
+      const nl={...old,date:patch.date,qty:patch.qty,price:patch.price,fees:patch.fees};
+      if(dateChanged)invalidateFxSource(nl,'fxRateSource');   // même règle que buyDate/sellDate en Sales
+      ps[lotIndex]=nl;
+    }
     return{...p,purchases:ps};
   });saveData();render();
 }
+// delPurch — retrait par index réel, aucun contrôle croisé sur les cessions ([DÉCISION] soft-signal).
 function delPurch(type,pid,i){
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:p.purchases.filter((_,j)=>j!==i)}:p);
   saveData();render();
