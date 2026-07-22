@@ -459,10 +459,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return buf.getvalue().encode("utf-8")
 
         def calc_pos(p, trades):
-            """Miroir Python de calcPos JS (spec Securities v2.0 §4.5).
-            Duplication sensible en v2.0 : les deux implémentations doivent produire
-            les mêmes tq/wac/wacBase/remaining sur les mêmes données (spec §9).
-            Valeurs NON arrondies (arrondi à l'écriture CSV)."""
+            """Miroir Python de calcPos JS (spec Securities/Cryptos v3.0 §4.5).
+            Duplication sensible : les deux implémentations doivent produire les mêmes
+            tq/wac/wac_base/remaining ET le même wac_base_at(date) daté sur les mêmes
+            données (spec §9). Valeurs NON arrondies (arrondi à l'écriture CSV)."""
             purchases = p.get('purchases', [])
             tq = sum((pu.get('qty') or 0) for pu in purchases)
             ti = sum((pu.get('qty') or 0) * (pu.get('price') or 0)
@@ -475,6 +475,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        if all_fx else None)
             wac = ti / tq if tq else 0
             wac_base = ti_base / tq if (tq and ti_base is not None) else None
+
+            # [v3.0] Accesseur DATÉ — miroir EXACT de wacBaseAt JS (Securities/Cryptos v3.0 §4.5).
+            # Coût moyen pondéré des seuls lots date ≤ date, en devise de reporting. Tout-ou-rien
+            # DATE-RESTREINT sur fxRateSource ∈ {'ok','auto','manual'} (jamais fxRate is not None) :
+            # un lot postérieur non résolu ne bloque jamais wac_base_at(date). Fermé sur `purchases`.
+            def wac_base_at(date):
+                if not date:
+                    return None
+                tq_up = 0
+                ti_base_up = 0.0
+                all_resolved = True
+                for pu in purchases:
+                    d = pu.get('date')
+                    if not d or d > date:
+                        continue
+                    tq_up += (pu.get('qty') or 0)
+                    if pu.get('fxRateSource') not in ('ok', 'auto', 'manual'):
+                        all_resolved = False
+                    ti_base_up += ((pu.get('qty') or 0) * (pu.get('price') or 0)
+                                   + (pu.get('fees') or 0)) * (pu.get('fxRate') or 0)
+                if tq_up <= 0 or not all_resolved:
+                    return None
+                return ti_base_up / tq_up
+
             sold_qty = sum((t.get('qSold') or 0) for t in trades if t.get('posId') == p.get('id'))
             remaining = tq - sold_qty
             neg = remaining < 0
@@ -486,6 +510,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             gp = (valo_base - invested_remaining) if (valo_base is not None and invested_remaining is not None) else None
             evol = (gp / invested_remaining) if (gp is not None and invested_remaining and invested_remaining > 0) else None
             return {'tq': tq, 'ti': ti, 'wac': wac, 'wac_base': wac_base,
+                    'wac_base_at': wac_base_at,
                     'remaining': remaining, 'invested_remaining': invested_remaining,
                     'live': live, 'valo': valo, 'valo_base': valo_base, 'gp': gp, 'evol': evol}
 
@@ -662,22 +687,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         CCY = display_cur.upper()
         SORTIES_OPT_HEADERS = [f"total_buy_{CCY}", f"total_sell_{CCY}", f"pnl_{CCY}", "pnl_pct"]
 
-        def calc_sortie_opts(t):
-            """Cession v2.0 : coût de base figé (wacBaseAtSale), volet achat disparu.
-            tb = qSold × wacBaseAtSale (toujours calculable en wacBaseCurrency).
-            tbDisplay = convert_fx(tb, wacBaseCurrency, display_cur) — peut être None.
-            Totaux Options disponibles seulement si fxRateSell résolu ET tbDisplay non None
-            (double condition, miroir de calcTradeOptions JS — pas seulement fxRateSell)."""
+        def calc_sortie_opts(t, pos):
+            """[v3.0] Coût de base DATÉ calculé à l'export : wb = pos.wac_base_at(sellDate),
+            déjà en devise de reporting (plus de wacBaseAtSale figé ni de convert). pos est le
+            résultat calc_pos de la position d'origine, ou None si orpheline (posId sans position).
+            tb = qSold × wb ; None si wb indisponible (orpheline, aucun lot ≤ sellDate, lot non
+            résolu, sellDate absente). Totaux Options disponibles seulement si fxRateSell résolu
+            ET wb non None (double condition, miroir de calcTradeOptions JS — pas seulement fxRateSell)."""
             q_sold, price_sell = t.get('qSold') or 0, t.get('priceSell') or 0
             fees_sell = t.get('feesSell') or 0
-            wbas, wbcur = t.get('wacBaseAtSale'), t.get('wacBaseCurrency')
+            wb = pos['wac_base_at'](t.get('sellDate')) if pos else None
             ts = q_sold * price_sell - fees_sell if (q_sold > 0 and price_sell > 0) else 0
-            tb = q_sold * (wbas or 0)
-            tb_display = convert_fx(tb, wbcur, display_cur, fx) if wbcur else None
+            tb = q_sold * wb if wb is not None else None
             fx_sell = t.get('fxRateSell')
             resolved = fx_sell is not None and t.get('fxRateSellSource') != 'ko'
-            if resolved and tb_display is not None:
-                total_buy  = round(tb_display, 2)
+            if resolved and tb is not None:
+                total_buy  = round(tb, 2)
                 total_sell = round(ts * fx_sell, 2)
                 pnl        = round(total_sell - total_buy, 2)
                 pct        = round(pnl / total_buy * 100, 1) if total_buy > 0 else ""
@@ -688,18 +713,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         HEADERS_CTO_SORTIES = [
             "id", "name", "ticker", "isin", "currency", "pos_id",
-            "wac_base_at_sale", "wac_base_currency",
+            "avg_cost_at_sale",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ] + SORTIES_OPT_HEADERS
         HEADERS_CRYPTO_SORTIES = [
             "id", "name", "currency", "pos_id",
-            "wac_base_at_sale", "wac_base_currency",
+            "avg_cost_at_sale",
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ] + SORTIES_OPT_HEADERS
 
-        def sortie_row(t):
-            """Ligne cession v2.0. pos_id vide si orpheline ; wac_base_at_sale/currency
-            vides si wacBase jamais résolu (cession migrée sans FX achat, spec §4.2 migration 9)."""
+        def sortie_row(t, pos):
+            """[v3.0] Ligne cession. pos = résultat calc_pos de la position d'origine (ou None si
+            orpheline). pos_id vide si orpheline ; avg_cost_at_sale = wac_base_at(sellDate) CALCULÉ
+            à l'export (devise de reporting), vide si indisponible (orpheline, aucun lot ≤ sellDate,
+            lot non résolu, sellDate absente). Ne lit JAMAIS wacBaseAtSale/wacBaseCurrency (supprimés)."""
+            wb = pos['wac_base_at'](t.get('sellDate')) if pos else None
             r = {
                 "id":        t.get("id", ""),
                 "name":      t.get("name", ""),
@@ -707,8 +735,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "isin":      t.get("isin", ""),
                 "currency":  t.get("currency", ""),
                 "pos_id":    t.get("posId") if t.get("posId") is not None else "",
-                "wac_base_at_sale":  t.get("wacBaseAtSale") if t.get("wacBaseAtSale") is not None else "",
-                "wac_base_currency": t.get("wacBaseCurrency") or "",
+                "avg_cost_at_sale":  round(wb, 4) if wb is not None else "",
                 "sellDate":  t.get("sellDate", ""),
                 "qSold":     t.get("qSold", ""),
                 "priceSell": t.get("priceSell", ""),
@@ -716,11 +743,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "fxRateSell":       t.get("fxRateSell") if t.get("fxRateSell") is not None else "",
                 "fxRateSellSource": t.get("fxRateSellSource") or "",
             }
-            r.update(calc_sortie_opts(t))
+            r.update(calc_sortie_opts(t, pos))
             return r
 
-        cto_sorties_rows    = [sortie_row(t) for t in data.get('ctoTrades', [])]
-        crypto_sorties_rows = [sortie_row(t) for t in data.get('cryptoTrades', [])]
+        # [v3.0] Lookup id → calc_pos(position) par scope, construit avant la boucle : fournit
+        # l'accesseur daté wac_base_at à sortie_row. .get(posId) → None si orpheline (posId sans position).
+        cto_pos_by_id    = {p.get('id'): calc_pos(p, data.get('ctoTrades', []))    for p in data.get('cto', [])}
+        crypto_pos_by_id = {p.get('id'): calc_pos(p, data.get('cryptoTrades', [])) for p in data.get('crypto', [])}
+        cto_sorties_rows    = [sortie_row(t, cto_pos_by_id.get(t.get('posId')))    for t in data.get('ctoTrades', [])]
+        crypto_sorties_rows = [sortie_row(t, crypto_pos_by_id.get(t.get('posId'))) for t in data.get('cryptoTrades', [])]
 
         # ── 5. Historique ─────────────────────────────────────────────────────
         # currency injectée depuis settings ; classes aplati en class_<clé> (union triée)
@@ -759,12 +790,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     val += vv
             return round(inv, 2), round(val, 2)
 
-        def realized_pnl(trades):
-            """Σ pnl_<CCY> (= gpOpt) des cessions complètes — même condition que
-            calc_sortie_opts (fxRateSell résolu ET tbDisplay disponible), pas fxRateBuy."""
+        def realized_pnl(trades, pos_by_id):
+            """Σ pnl_<CCY> (= gpOpt) des cessions complètes — même condition que calc_sortie_opts
+            (fxRateSell résolu ET avg_cost_at_sale daté disponible). pos_by_id : lookup id → calc_pos
+            du scope, pour résoudre la position (ou None si orpheline) et son coût de base daté."""
             total = 0.0
             for t in trades:
-                v = calc_sortie_opts(t)[f"pnl_{CCY}"]
+                v = calc_sortie_opts(t, pos_by_id.get(t.get('posId')))[f"pnl_{CCY}"]
                 if v != "":
                     total += v
             return round(total, 2)
@@ -778,11 +810,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             {"metric": "securities_invested",     "value": sec_inv,                                    "currency": CCY},
             {"metric": "securities_valuation",    "value": sec_val,                                    "currency": CCY},
             {"metric": "securities_pnl",          "value": round(sec_val - sec_inv, 2),               "currency": CCY},
-            {"metric": "securities_realized_pnl", "value": realized_pnl(data.get('ctoTrades', [])),   "currency": CCY},
+            {"metric": "securities_realized_pnl", "value": realized_pnl(data.get('ctoTrades', []), cto_pos_by_id),   "currency": CCY},
             {"metric": "cryptos_invested",        "value": cry_inv,                                    "currency": CCY},
             {"metric": "cryptos_valuation",       "value": cry_val,                                    "currency": CCY},
             {"metric": "cryptos_pnl",             "value": round(cry_val - cry_inv, 2),               "currency": CCY},
-            {"metric": "cryptos_realized_pnl",    "value": realized_pnl(data.get('cryptoTrades', [])),"currency": CCY},
+            {"metric": "cryptos_realized_pnl",    "value": realized_pnl(data.get('cryptoTrades', []), crypto_pos_by_id),"currency": CCY},
         ]
 
         # ── Assemblage ZIP ────────────────────────────────────────────────────
