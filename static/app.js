@@ -17,6 +17,7 @@ let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
 let histoFocusIdx=null;
 let lotSortAsc=true;   // [v3.0] direction du tri d'affichage des lots (non persisté, affichage seul)
+let saleSortAsc=true;  // [v3.0] direction du tri d'affichage des cessions par sellDate (non persisté)
 let dashChartFilter='10Y';
 const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
@@ -59,22 +60,18 @@ async function loadData(){
       });
     });
   });
-  // Migration 9 (v2.0) : cessions v1.1 → posId + wacBaseAtSale/wacBaseCurrency reconstruits
-  // (ou null si FX achat non résolu), puis suppression du volet achat obsolète.
+  // Migration 9 (v2.0→v3.0) : cessions v1.1 → posId ajouté (null si non lié) + suppression du
+  // volet achat obsolète. [v3.0] Le coût de base n'est plus figé : wacBaseAtSale/wacBaseCurrency
+  // sont supprimés partout — le coût de base est lu dynamiquement via wacBaseAt(pos, sellDate).
   ['ctoTrades','cryptoTrades'].forEach(k=>{
     (DATA[k]||[]).forEach(t=>{
       if(!('posId' in t)){
         t.posId=null;
-        const q=t.qSold||0;
-        if(q>0&&['ok','auto','manual'].includes(t.fxRateBuySource)&&t.fxRateBuy!=null){
-          t.wacBaseAtSale=(q*(t.priceBuy||0)+(t.feesBuy||0))*t.fxRateBuy/q;
-          t.wacBaseCurrency=DATA.settings.currency;
-        }else{
-          t.wacBaseAtSale=null;
-          t.wacBaseCurrency=null;
-        }
         delete t.buyDate;delete t.priceBuy;delete t.feesBuy;delete t.fxRateBuy;delete t.fxRateBuySource;
         migrated=true;
+      }
+      if('wacBaseAtSale' in t||'wacBaseCurrency' in t){
+        delete t.wacBaseAtSale;delete t.wacBaseCurrency;migrated=true;
       }
     });
   });
@@ -172,6 +169,7 @@ function showConfirm(message){
 // champ unique). Réutilisable : Sales (B4) et History (B5) s'y appuieront (saleDialog/histoDialog).
 //   showForm({title, fields:[{key,label,type,value,options?,placeholder?}], validate})
 //     type ∈ 'text' | 'date' | 'number' | 'select' (options=[{value,label}] pour select)
+//            | 'static' (affichage lecture seule, ignoré à la collecte — identité figée)
 //     validate(values) → chaîne d'erreur (Valider bloqué, popup maintenue) ou null (résolu)
 //   Résout avec l'objet {key:value} à la validation, ou null à l'annulation.
 // N'écrit rien : l'appelant écrit en données à partir de la valeur résolue.
@@ -182,7 +180,10 @@ function showForm(cfg){
     const fieldsHtml=cfg.fields.map(f=>{
       const id='form-f-'+f.key;
       let control;
-      if(f.type==='select'){
+      if(f.type==='static'){
+        // Champ d'affichage en lecture seule (identité figée) — pas d'input, ignoré à la collecte.
+        return `<div class="form-row"><label>${esc(f.label)}</label><div style="padding:6px 8px;font-size:13px;color:var(--text2)">${esc(f.value)}</div></div>`;
+      }else if(f.type==='select'){
         control=`<select id="${id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${o.value===f.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
       }else{
         const t=f.type||'text';
@@ -433,12 +434,18 @@ function calcPos(p,trades=[]){
   const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
   return{tq,ti,wac,wacBase,wacBaseAt,soldQty,remaining,soldeMin,breachDate,investedRemaining,valo,gp,evol};
 }
-// Cession v2.0 : plus de volet achat natif. tb = qSold × wacBaseAtSale
-// (déjà en devise de reporting figée wacBaseCurrency) — toujours calculable.
+// [v3.0] Coût de base DATÉ d'une cession — délègue à calcPos(pos).wacBaseAt(date).
+// pos peut être null (position orpheline) → null. Ne dépend que des lots d'achat, jamais des
+// cessions (d'où trades=[]) : recalculé à chaque rendu, jamais figé sur la cession.
+function wacBaseAt(pos,date){
+  if(!pos)return null;
+  return calcPos(pos,[]).wacBaseAt(date);
+}
+// [v3.0] Cession : plus aucun coût de base figé. ts = qSold×priceSell − feesSell (natif).
+// Le tb natif disparaît : le coût de base vient déjà en devise de reporting via wacBaseAt (calcTradeOptions).
 function calcTrade(t){
   const ts=(t.qSold>0&&t.priceSell>0)?(t.qSold||0)*(t.priceSell||0)-(t.feesSell||0):0;
-  const tb=(t.qSold||0)*(t.wacBaseAtSale||0);
-  return{ts,tb};
+  return{ts};
 }
 function pBg(p){
   if(p.priceSource==='stale') return 'error-cell';
@@ -782,8 +789,8 @@ function shouldShowFxBanner(){
   if(Object.keys(getFx()).length===0)return true;
   if((DATA.cto||[]).some(p=>calcPos(p,DATA.ctoTrades).wacBase==null))return true;
   if((DATA.crypto||[]).some(p=>calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
-  if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t).gpOpt==null))return true;
-  if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t).gpOpt==null))return true;
+  if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t,posById('cto',t.posId)).gpOpt==null))return true;
+  if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t,posById('crypto',t.posId)).gpOpt==null))return true;
   return false;
 }
 function renderDash(){
@@ -1042,25 +1049,27 @@ function histoFxBg(source){
   if(source==='ko')return 'error-cell';
   return '';
 }
-// tbDisplay = convert(tb, wacBaseCurrency, deviseOptions courante) — PEUT valoir null
-// (taux du jour absent). gpOpt/pctOpt/tsOpt exigent fxRateSell résolu ET tbDisplay non-null
-// — les deux conditions conjointement (piège spec §4.5/§9). tbDisplay reste affichable seul.
-function calcTradeOptions(t){
+// [v3.0] wb = wacBaseAt(pos, t.sellDate) — coût de base DÉJÀ en devise de reporting courante
+// (plus de tbDisplay/convert). tb = qSold×wb ; null si wb indisponible (orphelin, aucun lot ≤ date,
+// lot ≤ date non résolu). gpOpt/tsOpt/pctOpt exigent fxRateSell résolu ET tb non-null — les deux
+// conjointement (piège spec §4.5/§9). Retourne wb pour la colonne « Avg cost » live.
+function calcTradeOptions(t,pos){
   const c=calcTrade(t);
-  const tbDisplay=convert(c.tb,t.wacBaseCurrency,getCur().code);
-  if(t.fxRateSell==null||t.fxRateSellSource==='ko'||tbDisplay==null)
-    return{tbDisplay,tsOpt:null,gpOpt:null,pctOpt:null};
+  const wb=wacBaseAt(pos,t.sellDate);
+  const tb=wb!=null?(t.qSold||0)*wb:null;
+  if(t.fxRateSell==null||t.fxRateSellSource==='ko'||tb==null)
+    return{wb,tb,tsOpt:null,gpOpt:null,pctOpt:null};
   const tsOpt=c.ts*t.fxRateSell;
-  const gpOpt=tsOpt-tbDisplay;
-  return{tbDisplay,tsOpt,gpOpt,pctOpt:tbDisplay>0?gpOpt/tbDisplay:null};
+  const gpOpt=tsOpt-tb;
+  return{wb,tb,tsOpt,gpOpt,pctOpt:tb>0?gpOpt/tb:null};
 }
 // KPIs consolidés du bandeau — les 4 totaux partagent STRICTEMENT le même périmètre
-// (gpOpt != null : fxRateSell résolu ET tbDisplay disponible). Fonction pure de l'état des cessions.
+// (gpOpt != null : fxRateSell résolu ET wacBaseAt(pos, sellDate) disponible). Fonction pure de l'état.
 function calcSalesKpis(type){
   const key=type==='cto'?'ctoTrades':'cryptoTrades';
   const trades=DATA[key]||[];
-  const complete=trades.map(t=>calcTradeOptions(t)).filter(o=>o.gpOpt!=null);
-  const totalB=complete.reduce((s,o)=>s+o.tbDisplay,0);
+  const complete=trades.map(t=>calcTradeOptions(t,posById(type,t.posId))).filter(o=>o.gpOpt!=null);
+  const totalB=complete.reduce((s,o)=>s+o.tb,0);
   const totalS=complete.reduce((s,o)=>s+o.tsOpt,0);
   const gpTotal=complete.reduce((s,o)=>s+o.gpOpt,0);
   return{totalB,totalS,gpTotal,pctTotal:totalB>0?gpTotal/totalB:null,
@@ -1069,6 +1078,34 @@ function calcSalesKpis(type){
 // Lecture ponctuelle et non fonctionnelle de Securities/Cryptos : existence uniquement.
 // Ne sert JAMAIS à recalculer name/isin/ticker (toujours lus sur la cession figée).
 function posExists(type,posId){return (DATA[type]||[]).some(p=>p.id===posId);}
+// [v3.0] posById — récupère la position pour lire wacBaseAt/le solde glissant. null si orpheline
+// → coût de base « — ». N'alimente JAMAIS name/isin/ticker (figés sur la cession, lecture seule).
+function posById(type,posId){return (DATA[type]||[]).find(p=>p.id===posId)||null;}
+// [v3.0] Plafond temporel (§4.2) : quantité max cessible à sellDate SANS rendre le solde glissant
+// de la position négatif à aucune date ≥ sellDate. Reprend l'algo de solde glissant de calcPos
+// (achats + / ventes −, achats avant ventes à date égale), en excluant la cession éditée.
+// Se réduit au plafond global (tq − Σ autres qSold) quand sellDate est postérieure à tous les
+// événements. Le niveau du solde À sellDate compte dans le min car il court jusqu'au prochain événement.
+function maxSellableAt(pos,trades,sellDate,excludeId){
+  if(!pos||!sellDate)return 0;
+  const events=[];
+  (pos.purchases||[]).forEach(x=>{if(x.date)events.push({date:x.date,amount:(x.qty||0)});});
+  (trades||[]).forEach(t=>{if(t.posId===pos.id&&t.id!==excludeId&&t.sellDate)events.push({date:t.sellDate,amount:-(t.qSold||0)});});
+  events.sort((a,b)=>{
+    if(a.date<b.date)return -1;
+    if(a.date>b.date)return 1;
+    return (a.amount>0?0:1)-(b.amount>0?0:1);        // départage à date égale : achats (+) avant ventes (−)
+  });
+  let running=0,soldeAt=0,dispo=Infinity;
+  for(const e of events){
+    running+=e.amount;
+    if(e.date<=sellDate)soldeAt=running;             // solde à sellDate (dernier cumul de date ≤ sellDate)
+    else if(running<dispo)dispo=running;             // min du solde glissant sur les événements > sellDate
+  }
+  if(soldeAt<dispo)dispo=soldeAt;                     // le niveau à sellDate court jusqu'au 1er événement > sellDate
+  if(dispo===Infinity)dispo=soldeAt;                 // aucun événement > sellDate ⇒ plafond = solde à sellDate
+  return dispo<0?0:dispo;
+}
 // Navigation depuis une cession vers sa position d'origine (identification cliquable).
 function goToPos(type,posId){expanded[type+posId]=true;switchTab(type);}
 async function syncFx(key){
@@ -1136,41 +1173,51 @@ async function manualHistoFx(i){
 function renderES(type){
   const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
   const trades=DATA[key]||[];
-  const opts=trades.map(t=>calcTradeOptions(t));
   const kpi=calcSalesKpis(type);
   const cur=getCur().code.toUpperCase();
   const badge=`<span style="font-size:9px;background:#2a0f0f;color:var(--red);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
-  let rows=trades.map((t,i)=>{const o=opts[i];const exists=posExists(type,t.posId);const nm=t.name||'(unnamed)';return`<tr>
-    <!-- IDENTIFICATION (lecture seule) -->
+  // [v3.0] Tri d'affichage par sellDate sur une COPIE {t,i} — jamais le tableau stocké.
+  // upTrade/delTrade opèrent sur l'id réel de la cession (§4.11).
+  const display=trades.map((t,i)=>({t,i})).sort((a,b)=>{
+    const da=a.t.sellDate||'',db=b.t.sellDate||'';
+    if(da<db)return saleSortAsc?-1:1;
+    if(da>db)return saleSortAsc?1:-1;
+    return 0;
+  });
+  let rows=display.map(({t})=>{
+    const pos=posById(type,t.posId);
+    const o=calcTradeOptions(t,pos);       // {wb,tb,tsOpt,gpOpt,pctOpt}
+    const exists=posExists(type,t.posId);
+    const nm=t.name||'(unnamed)';
+    return`<tr>
+    <!-- IDENTIFICATION (lecture seule, figée sur la cession) -->
     <td>${exists
-      ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${nm}</span>`
-      :`${nm}${badge}`}</td>
-    ${isCto?`<td style="font-size:11px;color:var(--text2)">${t.isin||''}</td>`:''}
-    ${isCto?`<td style="font-size:11px;color:var(--text2)">${t.ticker||''}</td>`:''}
+      ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${esc(nm)}</span>`
+      :`${esc(nm)}${badge}`}</td>
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.isin||'')}</td>`:''}
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.ticker||'')}</td>`:''}
     <td style="text-align:center;font-size:11px;color:var(--text2)">${t.currency?t.currency.toUpperCase():'—'}</td>
-    <td class="r mono" style="font-size:11px;color:var(--text2)">${fmtNative(t.wacBaseAtSale,t.wacBaseCurrency)}</td>
-    <!-- VENTE -->
-    <td style="border-left:2px solid var(--accent)">
-      <input type="date" value="${t.sellDate||''}" onchange="upTrade('${key}',${t.id},'sellDate',this.value)">
-    </td>
-    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.qSold||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'qSold',this.value)"></td>
-    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.priceSell||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'priceSell',this.value)"></td>
-    <td class="r"><input type="text" inputmode="decimal" class="num-text" value="${t.feesSell||''}" onblur="this.scrollLeft=0" onchange="upTrade('${key}',${t.id},'feesSell',this.value)"></td>
+    <td class="r mono" style="font-size:11px;color:var(--text2)">${o.wb!=null?fmt(o.wb):'—'}</td>
+    <!-- VENTE (affichage seul) -->
+    <td style="border-left:2px solid var(--accent);font-size:12px">${t.sellDate||'—'}</td>
+    <td class="r mono">${fmtQ(t.qSold)||'—'}</td>
+    <td class="r mono">${t.priceSell?fmtNative(t.priceSell,t.currency):'—'}</td>
+    <td class="r mono">${t.feesSell?fmtNative(t.feesSell,t.currency):'—'}</td>
     <td class="${fxBg(t.fxRateSellSource)}" style="font-size:12px">
       ${fxIco(t.fxRateSellSource)} ${t.fxRateSell!=null?t.fxRateSell.toFixed(2):'—'}
     </td>
-    <td class="btn-col">
-      <button onclick="event.stopPropagation();manualFx('${key}',${t.id})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
-    </td>
     <!-- TOTAL (devise Options) -->
-    <td class="r mono" style="border-left:2px solid var(--accent)">${o.tbDisplay!=null?fmt(o.tbDisplay):'—'}</td>
+    <td class="r mono" style="border-left:2px solid var(--accent)">${o.tb!=null?fmt(o.tb):'—'}</td>
     <td class="r mono">${o.tsOpt!=null?fmt(o.tsOpt):'—'}</td>
     <td class="r mono ${o.gpOpt!=null?gpC(o.gpOpt):''}">${o.gpOpt!=null?fmt(o.gpOpt):'—'}</td>
     <td class="r mono ${o.pctOpt!=null?gpC(o.pctOpt):''}">${o.pctOpt!=null?fmtP(o.pctOpt):'—'}</td>
     <!-- ACTIONS -->
-    <td><button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button></td>
+    <td class="btn-col" style="white-space:nowrap">
+      <button class="btn btn-sm" onclick="saleDialog('${type}',${t.posId},${t.id})" title="Edit sale">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="delTrade('${key}',${t.id})">🗑</button>
+    </td>
   </tr>`}).join('');
-  const colgroup=`<colgroup>${(isCto?[9,8,6,5,7,8,7,7,6,6,3,7,7,6,5,3]:[11,6,7,8,8,8,7,7,3,8,8,7,6,6]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
+  const colgroup=`<colgroup>${(isCto?[9,8,6,5,7,7,7,7,6,6,7,8,7,5,5]:[11,6,8,8,8,8,7,7,8,8,7,6,8]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
     <h3>${isCto?'📋 Securities — Sales':'📋 Cryptos — Sales'}</h3>
     <div class="kpis">
@@ -1202,7 +1249,7 @@ function renderES(type){
     <div style="overflow-x:auto;max-width:100%"><table class="resp-tbl">${colgroup}<thead>
     <tr>
       <th colspan="${isCto?5:3}" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px">Identification</th>
-      <th colspan="6" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
+      <th colspan="5" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Sell</th>
       <th colspan="4" style="text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600;padding:3px 6px;border-left:2px solid var(--accent)">Total</th>
       <th></th>
     </tr>
@@ -1211,13 +1258,12 @@ function renderES(type){
       ${isCto?'<th>ISIN</th>':''}
       ${isCto?'<th>Ticker</th>':''}
       <th>CCY</th>
-      <th class="r">Avg cost at sale</th>
-      <th style="border-left:2px solid var(--accent)">Sell date</th>
+      <th class="r">Avg cost</th>
+      <th style="border-left:2px solid var(--accent)"><button class="btn btn-ghost btn-sm" onclick="toggleSaleSort()" style="padding:2px 4px">${saleSortAsc?'↑':'↓'}</button> Sell date</th>
       <th class="r">Qty</th>
       <th class="r">Unit price</th>
       <th class="r">Fees S</th>
       <th>FX S</th>
-      <th class="btn-col"></th>
       <th class="r" style="border-left:2px solid var(--accent)">Total B (${cur})</th>
       <th class="r">Total S (${cur})</th>
       <th class="r">P&L (${cur})</th>
@@ -1265,6 +1311,7 @@ function histoToggleSort(){histoSortAsc=!histoSortAsc;render();}
 
 // Actions utilisateur
 function toggleLotSort(){lotSortAsc=!lotSortAsc;render();}   // [v3.0] affichage seul, non persisté
+function toggleSaleSort(){saleSortAsc=!saleSortAsc;render();} // [v3.0] tri cessions par sellDate, affichage seul
 // [v3.0] Point d'écriture identité — appelé par la validation de posDialog (plus par onchange de cellule).
 // `patch` = sous-ensemble de {name,isin,broker,classe} (jamais le ticker, qui passe par up*Ticker).
 function upPos(type,id,patch){DATA[type]=DATA[type].map(p=>p.id===id?{...p,...patch}:p);saveData();render();}
@@ -1378,19 +1425,14 @@ async function lotDialog(type,posId,lotIndex){
   upPurch(type,posId,lotIndex,{date:values.date.trim(),qty:parseFloat(values.qty)||0,
     price:parseFloat(values.price)||0,fees:parseFloat(values.fees)||0});
 }
-// Cession v2.0 : un seul volet FX (vente) — plus de paramètre flow.
-async function manualFx(key,id){
+// [v3.0] manualFx — applique un taux de vente manuel saisi dans le champ « FX rate (manual) »
+// de saleDialog (plus de showPrompt inline). Rejet si NaN/≤0 ; no-op si égal au taux courant
+// arrondi à 4 décimales ; sinon fxRateSell=valeur, fxRateSellSource='manual' (§4.7).
+function manualFx(key,id,raw){
   const trade=(DATA[key]||[]).find(x=>x.id===id);if(!trade)return;
-  const cur=trade.currency?trade.currency.toUpperCase():'?';
-  const optCur=getCur().code.toUpperCase();
+  const p=parseFloat(String(raw).replace(',','.'));
+  if(isNaN(p)||p<=0)return;
   const current=trade.fxRateSell;
-  const v=await showPrompt(
-    'Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
-    current?current.toFixed(4):''
-  );
-  if(v===null)return;
-  const p=parseFloat(v.replace(',','.'));
-  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA[key]=DATA[key].map(x=>x.id===id?{...x,fxRateSell:p,fxRateSellSource:'manual'}:x);
   saveData();render();
@@ -1459,47 +1501,97 @@ function delPurch(type,pid,i){
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:p.purchases.filter((_,j)=>j!==i)}:p);
   saveData();render();
 }
-// sellFromPos — SEULE voie de création d'une cession (addTrade supprimé).
-// posId, name, isin, ticker, currency, wacBaseAtSale, wacBaseCurrency figés à la création.
+// [v3.0] sellFromPos — SEULE voie de création : ouvre saleDialog en mode création.
+// Ne fige plus aucun coût de base (wacBaseAt dynamique) ; plus de pré-remplissage qSold=remaining ;
+// plus de blocage WACBASE_UNAVAILABLE (coût de base indisponible ⇒ « — », jamais un rejet).
 function sellFromPos(type,id){
-  const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
+  const key=type==='cto'?'ctoTrades':'cryptoTrades';
   const pos=DATA[type].find(p=>p.id===id);
   if(!pos)return;
   const c=calcPos(pos,DATA[key]);
-  if(!(c.remaining>0)){toast('⚠️ No remaining quantity to sell','#7f1d1d');return;}
-  if(c.wacBase==null){toast('⚠️ Sync the purchase FX rates before selling','#7f1d1d');return;}
-  DATA[key].push({id:nextId(DATA[key]),posId:id,
-    name:pos.name||'',
-    ...(isCto?{isin:pos.isin||'',ticker:pos.ticker||''}:{}),
-    currency:pos.currency,
-    sellDate:'',qSold:c.remaining,priceSell:0,feesSell:0,
-    wacBaseAtSale:c.wacBase,wacBaseCurrency:getCur().code,
-    fxRateSell:null,fxRateSellSource:null});
-  saveData();
-  switchTab(isCto?'ctoES':'cryptoES');
+  if(!(c.remaining>0)){toast('⚠️ No remaining quantity to sell','#7f1d1d');return;}   // NO_QUANTITY_AVAILABLE
+  saleDialog(type,id);
 }
-// Champs éditables restants : sellDate, qSold (plafonné), priceSell, feesSell.
-// name/isin/ticker/currency lecture seule (plus d'input dans le template).
-function upTrade(key,id,f,v){
-  if(f==='qSold'){
-    const nv=parseFloat(v)||0;
-    const type=key==='ctoTrades'?'cto':'crypto';
-    const trade=DATA[key].find(t=>t.id===id);
-    const pos=trade?DATA[type].find(p=>p.id===trade.posId):null;
-    if(pos){
-      const tq=calcPos(pos,DATA[key]).tq;
-      const soldByOthers=DATA[key].filter(t=>t.posId===trade.posId&&t.id!==id).reduce((s,t)=>s+(t.qSold||0),0);
-      let cap=tq-soldByOthers;if(cap<0)cap=0;
-      if(nv>cap){toast('⚠️ Quantity exceeds remaining ('+(fmtQ(cap)||'0')+' available)','#7f1d1d');render();return;}
-    }
-    DATA[key]=DATA[key].map(t=>t.id===id?{...t,qSold:nv}:t);
-    saveData();render();return;
+// [v3.0] saleDialog — popup de cession PARTAGÉE Securities/Cryptos (via showForm).
+// Création si tradeId omis, édition sinon. Identité (name/isin/ticker/currency) en LECTURE SEULE
+// (champs statiques). sellDate OBLIGATOIRE ; qSold plafonné temporellement (maxSellableAt) ;
+// FX manuel intégré en édition. N'écrit qu'à la validation ; Annuler n'écrit rien.
+async function saleDialog(type,posId,tradeId){
+  const isCto=type==='cto',key=isCto?'ctoTrades':'cryptoTrades';
+  const isEdit=tradeId!=null;
+  const trade=isEdit?(DATA[key]||[]).find(t=>t.id===tradeId):null;
+  if(isEdit&&!trade)return;
+  const pos=posById(type,posId);   // peut être null (orpheline) — coût de base « — », saisie toujours possible
+  // Identité : copiée depuis la position en création, figée sur la cession en édition (lecture seule).
+  const name=(isEdit?trade.name:(pos&&pos.name))||'(unnamed)';
+  const isin=(isEdit?trade.isin:(pos&&pos.isin))||'';
+  const ticker=(isEdit?trade.ticker:(pos&&pos.ticker))||'';
+  const currency=(isEdit?trade.currency:(pos&&pos.currency))||null;
+  const curLabel=currency?currency.toUpperCase():'—';
+  const optCur=getCur().code.toUpperCase();
+
+  const fields=[{key:'_name',label:'Name',type:'static',value:name}];
+  if(isCto){
+    fields.push({key:'_isin',label:'ISIN',type:'static',value:isin});
+    fields.push({key:'_ticker',label:'Ticker',type:'static',value:ticker});
   }
-  const isN=(f!=='sellDate');
+  fields.push({key:'_currency',label:'Currency',type:'static',value:curLabel});
+  fields.push({key:'sellDate',label:'Sell date',type:'date',value:isEdit?(trade.sellDate||''):''});
+  fields.push({key:'qSold',label:'Quantity',type:'number',value:isEdit&&trade.qSold?trade.qSold:''});
+  fields.push({key:'priceSell',label:'Unit price',type:'number',value:isEdit&&trade.priceSell?trade.priceSell:''});
+  fields.push({key:'feesSell',label:'Fees',type:'number',value:isEdit&&trade.feesSell?trade.feesSell:''});
+  // FX manuel : uniquement en édition (§4.7) — une cession en création n'a pas encore de taux.
+  if(isEdit)fields.push({key:'fxManual',label:'FX rate ('+curLabel+'→'+optCur+', manual)',type:'number',
+    value:trade.fxRateSell!=null?trade.fxRateSell.toFixed(4):''});
+
+  const values=await showForm({
+    title:isEdit?'Edit sale':'Sell — '+name,
+    fields,
+    validate:vals=>{
+      if(!vals.sellDate||!vals.sellDate.trim())return 'A sell date is required.';               // SELLDATE_REQUIRED
+      const q=parseFloat(vals.qSold);
+      if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';
+      const cap=maxSellableAt(pos,DATA[key],vals.sellDate.trim(),isEdit?tradeId:undefined);
+      if(q>cap)return 'Quantity exceeds available at that date ('+(fmtQ(cap)||'0')+' available).';  // QTY_EXCEEDS_TEMPORAL
+      if(vals.priceSell!==''&&isNaN(parseFloat(vals.priceSell)))return 'Unit price must be a number.';
+      if(vals.feesSell!==''&&isNaN(parseFloat(vals.feesSell)))return 'Fees must be a number.';
+      if(isEdit&&vals.fxManual!==''&&(isNaN(parseFloat(vals.fxManual))||parseFloat(vals.fxManual)<=0))
+        return 'FX rate must be a number greater than 0.';                                        // FX_RATE_INVALID
+      return null;
+    }
+  });
+  if(values==null)return;   // Annuler → aucune écriture
+
+  const patch={
+    sellDate:values.sellDate.trim(),
+    qSold:parseFloat(values.qSold)||0,
+    priceSell:parseFloat(values.priceSell)||0,
+    feesSell:parseFloat(values.feesSell)||0
+  };
+  if(!isEdit){
+    // Création : identité figée depuis la position, aucun coût de base stocké.
+    DATA[key].push({id:nextId(DATA[key]),posId:posId,
+      name:(pos&&pos.name)||'',
+      ...(isCto?{isin:(pos&&pos.isin)||'',ticker:(pos&&pos.ticker)||''}:{}),
+      currency:pos?pos.currency:null,
+      ...patch,
+      fxRateSell:null,fxRateSellSource:null});
+    saveData();
+    switchTab(isCto?'ctoES':'cryptoES');
+  }else{
+    upTrade(key,tradeId,patch);   // invalide fxRateSellSource → 'ko' si sellDate a changé
+    // FX manuel appliqué APRÈS upTrade : un taux saisi l'emporte sur l'invalidation de sellDate.
+    if(values.fxManual!=='')manualFx(key,tradeId,values.fxManual);
+  }
+}
+// [v3.0] upTrade — point d'écriture d'une cession, appelé par la validation de saleDialog
+// (plus par onchange inline). patch = {sellDate,qSold,priceSell,feesSell} déjà validés
+// (dont plafond temporel). Changement de sellDate ⇒ invalidation fxRateSellSource → 'ko'.
+function upTrade(key,id,patch){
   DATA[key]=DATA[key].map(t=>{
     if(t.id!==id)return t;
-    const updated={...t,[f]:isN?(parseFloat(v)||0):v};
-    if(f==='sellDate') invalidateFxSource(updated,'fxRateSellSource');
+    const updated={...t,...patch};
+    if((t.sellDate||'')!==patch.sellDate)invalidateFxSource(updated,'fxRateSellSource');
     return updated;
   });
   saveData();render();
