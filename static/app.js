@@ -1386,13 +1386,15 @@ async function posDialog(type,id){
     title:isEdit?'Edit position':'New position',
     fields,
     validate:vals=>{
+      if(!(vals.name||'').trim())
+        return 'Name is required.';
       const t=(vals.ticker||'').trim();
-      if(t){
-        if(isCto&&!isValidCtoTicker(t))
-          return 'Ticker rejected: unrecognized suffix. Accepted: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY).';
-        if(!isCto&&!parseCryptoTicker(t))
-          return 'Crypto ticker rejected. Expected id:currency (e.g. bitcoin:usd). Currencies: eur, usd, chf, gbp, jpy, hkd, cny.';
-      }
+      if(!t)
+        return isCto?'Ticker is required.':'Ticker is required (format id:currency, e.g. bitcoin:usd).';
+      if(isCto&&!isValidCtoTicker(t))
+        return 'Ticker rejected: unrecognized suffix. Accepted: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY).';
+      if(!isCto&&!parseCryptoTicker(t))
+        return 'Crypto ticker rejected. Expected id:currency (e.g. bitcoin:usd). Currencies: eur, usd, chf, gbp, jpy, hkd, cny.';
       return null;
     }
   });
@@ -1408,8 +1410,7 @@ async function posDialog(type,id){
       ?{id:newId,name:values.name,isin:values.isin,ticker:'',broker:values.broker,classe:values.classe,
         currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null}
       :{id:newId,name:values.name,ticker:'',currency:null,purchases:[],livePrice:null,priceSource:'none',priceDate:null});
-    if(t){ if(isCto)upCtoTicker(newId,t); else upCryptoTicker(newId,t); }   // pose ticker + currency (crypto)
-    else { saveData();render(); }
+    if(isCto)upCtoTicker(newId,t); else upCryptoTicker(newId,t);   // pose ticker + currency (crypto) — t non vide (validé)
   }
 }
 // [v3.0] lotDialog — popup lot d'achat PARTAGÉE. `date` obligatoire (LOT_DATE_REQUIRED).
