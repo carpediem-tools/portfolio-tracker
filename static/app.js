@@ -783,14 +783,26 @@ function importJSON(input){
   };r.readAsText(f);
 }
 
-// shouldShowFxBanner — 3 conditions indépendantes (spec Dashboard v1.1 §4.5).
+// shouldShowFxBanner — 3 conditions indépendantes (spec Dashboard v2.0 §4.5).
 // Ne duplique jamais la règle tout-ou-rien (calcPos) ni le filtre gpOpt (calcTradeOptions).
+// [v2.0] La condition 3 (gpOpt == null) capture désormais AUSSI le cas « coût de base daté
+// indisponible » via la sémantique v3.0 de gpOpt (Sales v3.0 §4.8) — pas de 4e condition FX.
 function shouldShowFxBanner(){
   if(Object.keys(getFx()).length===0)return true;
   if((DATA.cto||[]).some(p=>calcPos(p,DATA.ctoTrades).wacBase==null))return true;
   if((DATA.crypto||[]).some(p=>calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
   if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t,posById('cto',t.posId)).gpOpt==null))return true;
   if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t,posById('crypto',t.posId)).gpOpt==null))return true;
+  return false;
+}
+// [v2.0] shouldShowTemporalBanner — bandeau de cohérence temporelle, DISTINCT et INDÉPENDANT
+// du bandeau FX (nature différente : chronologie vs devise ; les deux peuvent coexister).
+// true si au moins une position (cto ou crypto) a soldeMin < 0 (brèche) ou remaining < 0 (§4.5bis).
+// Lecture seule de calcPos — un seul et même critère, aucun calcul dupliqué, court-circuit au 1er true.
+function shouldShowTemporalBanner(){
+  const bad=c=>c.soldeMin<0||c.remaining<0;
+  if((DATA.cto||[]).some(p=>bad(calcPos(p,DATA.ctoTrades))))return true;
+  if((DATA.crypto||[]).some(p=>bad(calcPos(p,DATA.cryptoTrades))))return true;
   return false;
 }
 function renderDash(){
@@ -802,24 +814,28 @@ function renderDash(){
     if(!p.livePrice||!p.currency)return null;
     return convert(c.valo,p.currency,displayCur);
   }
+  // [v2.0] valoOk : position valorisable ET valo disponible (remaining ≥ 0 ET pas de brèche).
+  // Une position à valo indisponible est filtrée comme une position sans livePrice — jamais
+  // comptée dans excludedCount (réservé au taux de change manquant, §4.1) ni cumulée (jamais de valo négatif).
+  const valoOk=p=>p.livePrice&&p.c.valo!=null;
   let excludedCount=0;
   const cls=(DATA.settings.classes||[]).map(cl=>{
-    const ps=ctoC.filter(p=>p.classe===cl&&p.livePrice);
+    const ps=ctoC.filter(p=>p.classe===cl&&valoOk(p));
     let valo=0;
     ps.forEach(p=>{const v=convertValo(p,p.c);if(v!=null)valo+=v;else excludedCount++;});
     return{name:cl,valo};
   });
-  const unclValo=ctoC.filter(p=>p.livePrice&&!p.classe).reduce((s,p)=>{
+  const unclValo=ctoC.filter(p=>valoOk(p)&&!p.classe).reduce((s,p)=>{
     const v=convertValo(p,p.c);if(v!=null)return s+v;excludedCount++;return s;
   },0);
   if(unclValo>0)cls.push({name:'?',valo:unclValo});
-  const crValo=crC.filter(p=>p.livePrice).reduce((s,p)=>{
+  const crValo=crC.filter(p=>valoOk(p)).reduce((s,p)=>{
     const v=convertValo(p,p.c);if(v!=null)return s+v;excludedCount++;return s;
   },0);
   cls.push({name:'Cryptos',valo:crValo});
   const totV=cls.reduce((s,c)=>s+c.valo,0);
   const bmap={};
-  ctoC.filter(p=>p.livePrice).forEach(p=>{
+  ctoC.filter(p=>valoOk(p)).forEach(p=>{
     const b=p.broker||'?';
     const v=convertValo(p,p.c);
     if(v!=null)bmap[b]=(bmap[b]||0)+v;
@@ -856,11 +872,14 @@ function renderDash(){
   ${shouldShowFxBanner()?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
     ⚠️ Some FX rates are missing — a sync is recommended.
   </div>`:''}
+  ${shouldShowTemporalBanner()?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
+    ⚠️ Some positions have a negative stock at some point in time — check your buys and sales.
+  </div>`:''}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-    ${makePie(ctoC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
+    ${makePie(ctoC.filter(p=>valoOk(p)).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
     ${makePie(cls,'valo','name','Asset class')}
     ${makePie(bPie,'valo','name','Brokers')}
-    ${makePie(crC.filter(p=>p.livePrice).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Cryptos')}
+    ${makePie(crC.filter(p=>valoOk(p)).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Cryptos')}
   </div>
   <div class="card" style="margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
