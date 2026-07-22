@@ -8,6 +8,12 @@
 function invalidateFxSource(obj, sourceField, value='ko'){
   obj[sourceField]=value;
 }
+// resolveFx(nativeCur) — court-circuit local : devise native = devise Options → taux trivialement 1,
+// pas de pastille blanche ni de sync nécessaire. Miroir du court-circuit backend
+// (fetch_fx_rate_at, BASE==TARGET → {rate:1.0, source:'auto'}).
+function resolveFx(nativeCur){
+  return(nativeCur&&nativeCur===DATA.settings.currency)?{rate:1,source:'auto'}:{rate:null,source:null};
+}
 // parseCryptoTicker — source de vérité partagée avec portfolio_tracker.py (parse_crypto_ticker)
 // Toute modification des devises acceptées ou de la logique de parsing
 // doit être répercutée manuellement dans les deux fichiers.
@@ -1372,10 +1378,15 @@ async function posDialog(type,id){
   if(isEdit&&!pos)return;
   const brokers=DATA.settings.brokers||[];
   const classes=DATA.settings.classes||[];
+  const hasLots=isEdit&&pos&&(pos.purchases||[]).length>0;
   const fields=[{key:'name',label:'Name',type:'text',value:pos?pos.name||'':'',maxlength:25}];
   if(isCto)fields.push({key:'isin',label:'ISIN',type:'text',value:pos?pos.isin||'':''});
-  fields.push({key:'ticker',label:isCto?'Yahoo Ticker':'Ticker (id:currency)',type:'text',
-    value:pos?pos.ticker||'':'',placeholder:isCto?'ex: CW8.PA':'ex: bitcoin:usd'});
+  if(hasLots){
+    fields.push({key:'ticker',label:isCto?'Yahoo Ticker':'Ticker (id:currency)',type:'static',value:pos.ticker||''});
+  }else{
+    fields.push({key:'ticker',label:isCto?'Yahoo Ticker':'Ticker (id:currency)',type:'text',
+      value:pos?pos.ticker||'':'',placeholder:isCto?'ex: CW8.PA':'ex: bitcoin:usd'});
+  }
   if(isCto){
     fields.push({key:'broker',label:'Broker',type:'select',value:pos?pos.broker||'':(brokers[0]||''),
       options:[{value:'',label:''},...brokers.map(b=>({value:b,label:b}))]});
@@ -1391,22 +1402,24 @@ async function posDialog(type,id){
         return 'Name is required.';
       if(name.length>25)
         return 'Name must be 25 characters or fewer.';
-      const t=(vals.ticker||'').trim();
-      if(!t)
-        return isCto?'Ticker is required.':'Ticker is required (format id:currency, e.g. bitcoin:usd).';
-      if(isCto&&!isValidCtoTicker(t))
-        return 'Ticker rejected: unrecognized suffix. Accepted: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY).';
-      if(!isCto&&!parseCryptoTicker(t))
-        return 'Crypto ticker rejected. Expected id:currency (e.g. bitcoin:usd). Currencies: eur, usd, chf, gbp, jpy, hkd, cny.';
+      if(!hasLots){
+        const t=(vals.ticker||'').trim();
+        if(!t)
+          return isCto?'Ticker is required.':'Ticker is required (format id:currency, e.g. bitcoin:usd).';
+        if(isCto&&!isValidCtoTicker(t))
+          return 'Ticker rejected: unrecognized suffix. Accepted: none (USD), .PA .AS .DE .F .MI .BR .LS .MC (EUR), .SW .VX (CHF), .L (GBP), .T (JPY), .HK (HKD), .SS .SZ (CNY).';
+        if(!isCto&&!parseCryptoTicker(t))
+          return 'Crypto ticker rejected. Expected id:currency (e.g. bitcoin:usd). Currencies: eur, usd, chf, gbp, jpy, hkd, cny.';
+      }
       return null;
     }
   });
   if(values==null)return;                       // Annuler → aucune écriture
-  const t=(values.ticker||'').trim();
+  const t=hasLots?(pos.ticker||''):(values.ticker||'').trim();
   if(isEdit){
-    // Identité (hors ticker) via upPos ; ticker via up*Ticker (invalidation §4.2 si changé).
+    // Identité (hors ticker) via upPos ; ticker via up*Ticker (invalidation §4.2 si changé) — sauf si verrouillé (hasLots).
     upPos(type,id,isCto?{name:values.name,isin:values.isin,broker:values.broker,classe:values.classe}:{name:values.name});
-    if(isCto)upCtoTicker(id,t); else upCryptoTicker(id,t);
+    if(!hasLots){ if(isCto)upCtoTicker(id,t); else upCryptoTicker(id,t); }
   }else{
     const newId=nextId(DATA[type]);
     DATA[type].push(isCto
@@ -1506,12 +1519,17 @@ function upPurch(type,pid,lotIndex,patch){
     if(p.id!==pid)return p;
     const ps=[...(p.purchases||[])];
     if(lotIndex==null){
-      ps.push({date:patch.date,qty:patch.qty,price:patch.price,fees:patch.fees,fxRate:null,fxRateSource:null});
+      const fx=resolveFx(p.currency);
+      ps.push({date:patch.date,qty:patch.qty,price:patch.price,fees:patch.fees,fxRate:fx.rate,fxRateSource:fx.source});
     }else{
       const old=ps[lotIndex]||{};
       const dateChanged=(old.date||'')!==patch.date;
       const nl={...old,date:patch.date,qty:patch.qty,price:patch.price,fees:patch.fees};
-      if(dateChanged)invalidateFxSource(nl,'fxRateSource');   // même règle que buyDate/sellDate en Sales
+      if(dateChanged){
+        const fx=resolveFx(p.currency);
+        if(fx.rate!=null){nl.fxRate=fx.rate;nl.fxRateSource=fx.source;}
+        else invalidateFxSource(nl,'fxRateSource');   // même règle que buyDate/sellDate en Sales
+      }
       ps[lotIndex]=nl;
     }
     return{...p,purchases:ps};
@@ -1592,12 +1610,13 @@ async function saleDialog(type,posId,tradeId){
   };
   if(!isEdit){
     // Création : identité figée depuis la position, aucun coût de base stocké.
+    const fxSell=resolveFx(pos?pos.currency:null);
     DATA[key].push({id:nextId(DATA[key]),posId:posId,
       name:(pos&&pos.name)||'',
       ...(isCto?{isin:(pos&&pos.isin)||'',ticker:(pos&&pos.ticker)||''}:{}),
       currency:pos?pos.currency:null,
       ...patch,
-      fxRateSell:null,fxRateSellSource:null});
+      fxRateSell:fxSell.rate,fxRateSellSource:fxSell.source});
     saveData();
     switchTab(isCto?'ctoES':'cryptoES');
   }else{
@@ -1613,7 +1632,11 @@ function upTrade(key,id,patch){
   DATA[key]=DATA[key].map(t=>{
     if(t.id!==id)return t;
     const updated={...t,...patch};
-    if((t.sellDate||'')!==patch.sellDate)invalidateFxSource(updated,'fxRateSellSource');
+    if((t.sellDate||'')!==patch.sellDate){
+      const fx=resolveFx(t.currency);
+      if(fx.rate!=null){updated.fxRateSell=fx.rate;updated.fxRateSellSource=fx.source;}
+      else invalidateFxSource(updated,'fxRateSellSource');
+    }
     return updated;
   });
   saveData();render();
@@ -1669,9 +1692,10 @@ async function histoDialog(index){
   };
   if(!isEdit){
     // Création : ligne complète, sans champ 'classes' (§4.1/§4.6).
+    const fxH=resolveFx(patch.currency);
     DATA.historique.push({year:patch.year,currency:patch.currency,
       securities:patch.securities,crypto:patch.crypto,total:patch.securities+patch.crypto,
-      fxRate:null,fxRateSource:null});
+      fxRate:fxH.rate,fxRateSource:fxH.source});
     saveData();render();
   }else{
     upHisto(index,patch);   // invalide fxRateSource → 'ko' si year/currency change
@@ -1689,7 +1713,11 @@ function upHisto(i,patch){
   const u={...h,year:patch.year,currency:patch.currency,
            securities:patch.securities,crypto:patch.crypto};
   u.total=(u.securities||0)+(u.crypto||0);
-  if(changed)invalidateFxSource(u,'fxRateSource');
+  if(changed){
+    const fx=resolveFx(u.currency);
+    if(fx.rate!=null){u.fxRate=fx.rate;u.fxRateSource=fx.source;}
+    else invalidateFxSource(u,'fxRateSource');
+  }
   DATA.historique[i]=u;
   saveData();render();
 }
