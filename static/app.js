@@ -191,8 +191,16 @@ function showForm(cfg){
       }else if(f.type==='select'){
         control=`<select id="${id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${o.value===f.value?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
       }else{
-        const t=f.type||'text';
-        control=`<input id="${id}" type="${t}"${t==='number'?' step="any"':''}${f.maxlength?` maxlength="${f.maxlength}"`:''} value="${esc(f.value)}" placeholder="${esc(f.placeholder||'')}">`;
+        // [fix] Champ numérique rendu en type=text + inputmode=decimal, JAMAIS type=number.
+        // Cause racine (reproduite au navigateur) : <input type=number> filtre/efface silencieusement
+        // toute saisie non numérique → .value='' ET validity.badInput=false (cas des lettres). Le
+        // contrôle `vals.X!==''&&isNaN(parseFloat(...))` des consommateurs (lotDialog/saleDialog/
+        // histoDialog) devenait alors inatteignable → écriture d'un 0 muet, sans message d'erreur.
+        // En type=text, le texte brut ('abc') parvient au validateur, qui le rejette avec un message
+        // clair. (histoDialog.fxManual utilisait déjà type=text pour une raison analogue : la virgule.)
+        const isNum=(f.type==='number');
+        const t=isNum?'text':(f.type||'text');
+        control=`<input id="${id}" type="${t}"${isNum?' inputmode="decimal"':''}${f.maxlength?` maxlength="${f.maxlength}"`:''} value="${esc(f.value)}" placeholder="${esc(f.placeholder||'')}">`;
       }
       return `<div class="form-row"><label for="${id}">${esc(f.label)}</label>${control}</div>`;
     }).join('');
@@ -1676,6 +1684,8 @@ async function histoDialog(index){
       if(y<1900)return "That year? You definitely weren't born yet.";
       if(y>currentYear)return 'Year '+y+' is in the future.';                                   // YEAR_IN_FUTURE
       if(DATA.historique.some((e,j)=>j!==index&&e.year===y))return 'Year '+y+' already exists.'; // YEAR_DUPLICATE
+      if(vals.securities!==''&&isNaN(parseFloat(vals.securities)))return 'Securities amount must be a number.';
+      if(vals.crypto!==''&&isNaN(parseFloat(vals.crypto)))return 'Cryptos amount must be a number.';
       if(isEdit&&vals.fxManual!==''){
         const p=parseFloat(String(vals.fxManual).replace(',','.'));
         if(isNaN(p)||p<=0)return 'FX rate must be a number greater than 0.';                     // FX_RATE_INVALID
