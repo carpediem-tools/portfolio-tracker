@@ -14,6 +14,13 @@ function invalidateFxSource(obj, sourceField, value='ko'){
 function resolveFx(nativeCur){
   return(nativeCur&&nativeCur===DATA.settings.currency)?{rate:1,source:'auto'}:{rate:null,source:null};
 }
+// strictNum(str) — parseFloat()/parseInt() analysent un PRÉFIXE numérique et ignorent le reste
+// ("150abc" → 150, "2020xyz" → 2020) : trop permissif pour valider une saisie utilisateur.
+// Exige que la chaîne entière (après trim) soit un nombre valide, sinon renvoie NaN.
+function strictNum(str){
+  const s=String(str).trim();
+  return /^-?\d+(\.\d+)?$/.test(s)?parseFloat(s):NaN;
+}
 // parseCryptoTicker — source de vérité partagée avec portfolio_tracker.py (parse_crypto_ticker)
 // Toute modification des devises acceptées ou de la logique de parsing
 // doit être répercutée manuellement dans les deux fichiers.
@@ -1190,7 +1197,7 @@ async function syncHistoFx(){
 // à 4 décimales ; sinon fxRate=valeur, fxRateSource='manual' (§4.5). Accepte la virgule décimale.
 function manualHistoFx(i,raw){
   const h=DATA.historique[i];if(!h)return;
-  const p=parseFloat(String(raw).replace(',','.'));
+  const p=strictNum(String(raw).replace(',','.'));
   if(isNaN(p)||p<=0)return;
   const current=h.fxRate;
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
@@ -1456,10 +1463,10 @@ async function lotDialog(type,posId,lotIndex){
     validate:vals=>{
       if(!vals.date||!vals.date.trim())return 'A date is required.';                 // LOT_DATE_REQUIRED
       if(vals.date.trim()>isoToday())return 'Date cannot be in the future.';          // LOT_DATE_FUTURE
-      const q=parseFloat(vals.qty);
+      const q=strictNum(vals.qty);
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';          // LOT_QTY_INVALID
-      if(vals.price!==''&&(isNaN(parseFloat(vals.price))||parseFloat(vals.price)<0))return 'Unit price must be a number ≥ 0.';
-      if(vals.fees!==''&&(isNaN(parseFloat(vals.fees))||parseFloat(vals.fees)<0))return 'Fees must be a number ≥ 0.';
+      if(vals.price!==''&&(isNaN(strictNum(vals.price))||strictNum(vals.price)<0))return 'Unit price must be a number ≥ 0.';
+      if(vals.fees!==''&&(isNaN(strictNum(vals.fees))||strictNum(vals.fees)<0))return 'Fees must be a number ≥ 0.';
       return null;
     }
   });
@@ -1472,7 +1479,7 @@ async function lotDialog(type,posId,lotIndex){
 // arrondi à 4 décimales ; sinon fxRateSell=valeur, fxRateSellSource='manual' (§4.7).
 function manualFx(key,id,raw){
   const trade=(DATA[key]||[]).find(x=>x.id===id);if(!trade)return;
-  const p=parseFloat(String(raw).replace(',','.'));
+  const p=strictNum(String(raw).replace(',','.'));
   if(isNaN(p)||p<=0)return;
   const current=trade.fxRateSell;
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
@@ -1492,7 +1499,7 @@ async function manualLotFx(type,posId,lotIndex){
     current?current.toFixed(4):''
   );
   if(v===null)return;
-  const p=parseFloat(v.replace(',','.'));
+  const p=strictNum(v.replace(',','.'));
   if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA[type]=DATA[type].map(x=>{
@@ -1509,7 +1516,7 @@ async function manualPrice(type,id){
   const v=await showPrompt('Price in '+cur+(current!=null?' (current: '+current.toFixed(2)+')':'')+':',
     current!=null?current.toFixed(2):'');
   if(v===null)return;
-  const p=parseFloat(v.replace(',','.'));if(isNaN(p)||p<=0){toast('Invalid price','#7f1d1d');return;}
+  const p=strictNum(v.replace(',','.'));if(isNaN(p)||p<=0){toast('Invalid price','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(2)))return;
   const now=isoNow();
   DATA[type]=DATA[type].map(x=>x.id===id?{...x,livePrice:p,priceSource:'manual',priceDate:now}:x);
@@ -1597,13 +1604,13 @@ async function saleDialog(type,posId,tradeId){
     validate:vals=>{
       if(!vals.sellDate||!vals.sellDate.trim())return 'A sell date is required.';               // SELLDATE_REQUIRED
       if(vals.sellDate.trim()>isoToday())return 'Sell date cannot be in the future.';            // SELLDATE_FUTURE
-      const q=parseFloat(vals.qSold);
+      const q=strictNum(vals.qSold);
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';
       const cap=maxSellableAt(pos,DATA[key],vals.sellDate.trim(),isEdit?tradeId:undefined);
       if(q>cap)return 'Quantity exceeds available at that date ('+(fmtQ(cap)||'0')+' available).';  // QTY_EXCEEDS_TEMPORAL
-      if(vals.priceSell!==''&&isNaN(parseFloat(vals.priceSell)))return 'Unit price must be a number.';
-      if(vals.feesSell!==''&&isNaN(parseFloat(vals.feesSell)))return 'Fees must be a number.';
-      if(isEdit&&vals.fxManual!==''&&(isNaN(parseFloat(vals.fxManual))||parseFloat(vals.fxManual)<=0))
+      if(vals.priceSell!==''&&isNaN(strictNum(vals.priceSell)))return 'Unit price must be a number.';
+      if(vals.feesSell!==''&&isNaN(strictNum(vals.feesSell)))return 'Fees must be a number.';
+      if(isEdit&&vals.fxManual!==''&&(isNaN(strictNum(vals.fxManual))||strictNum(vals.fxManual)<=0))
         return 'FX rate must be a number greater than 0.';                                        // FX_RATE_INVALID
       return null;
     }
@@ -1679,15 +1686,15 @@ async function histoDialog(index){
     fields,
     validate:vals=>{
       const raw=String(vals.year).trim();
+      if(raw===''||!/^\d+$/.test(raw))return 'A valid year is required.';
       const y=parseInt(raw);
-      if(raw===''||isNaN(y))return 'A valid year is required.';
       if(y<1900)return "That year? You definitely weren't born yet.";
       if(y>currentYear)return 'Year '+y+' is in the future.';                                   // YEAR_IN_FUTURE
       if(DATA.historique.some((e,j)=>j!==index&&e.year===y))return 'Year '+y+' already exists.'; // YEAR_DUPLICATE
-      if(vals.securities!==''&&isNaN(parseFloat(vals.securities)))return 'Securities amount must be a number.';
-      if(vals.crypto!==''&&isNaN(parseFloat(vals.crypto)))return 'Cryptos amount must be a number.';
+      if(vals.securities!==''&&isNaN(strictNum(vals.securities)))return 'Securities amount must be a number.';
+      if(vals.crypto!==''&&isNaN(strictNum(vals.crypto)))return 'Cryptos amount must be a number.';
       if(isEdit&&vals.fxManual!==''){
-        const p=parseFloat(String(vals.fxManual).replace(',','.'));
+        const p=strictNum(String(vals.fxManual).replace(',','.'));
         if(isNaN(p)||p<=0)return 'FX rate must be a number greater than 0.';                     // FX_RATE_INVALID
       }
       return null;
