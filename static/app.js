@@ -49,7 +49,6 @@ const COLORS=['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc
 const THEMES=[{id:'terminal',label:'Terminal Pro'},{id:'bank',label:'Private Bank'},{id:'bold',label:'Bold Modern'}];
 function getTheme(){return localStorage.getItem('pt-theme')||'bold';}
 function applyTheme(){document.documentElement.setAttribute('data-theme',getTheme());}
-function setTheme(id){localStorage.setItem('pt-theme',id);applyTheme();render();}
 
 // API
 async function loadData(){
@@ -511,7 +510,7 @@ function render(){
   else if(currentTab==='info')     app.innerHTML=renderInfo();
   else app.innerHTML=renderHisto();
 }
-function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
+function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;applyTheme();optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
 function toggleExp(k){expanded[k]=!expanded[k];render();}
 // Sous-navigation Open positions | Sales — intégrée à l'en-tête de l'écran d'actifs.
 function setSpotView(type,v){spotView[type]=v;render();}
@@ -650,15 +649,15 @@ function setChartFilter(f){dashChartFilter=f;render();}
 
 // Dashboard
 function renderOptions(){
-  if(!pendingSettings){pendingSettings=JSON.parse(JSON.stringify(DATA.settings||{}));saveErrorMsg=null;}
+  if(!pendingSettings){pendingSettings=JSON.parse(JSON.stringify(DATA.settings||{}));pendingSettings.theme=getTheme();saveErrorMsg=null;}
   const cur=pendingSettings.currency||'eur';
-  const brokers=DATA.settings.brokers||[];
-  const classes=DATA.settings.classes||[];
+  const brokers=pendingSettings.brokers||[];
+  const classes=pendingSettings.classes||[];
   return `<div class="card"><h3>⚙️ Options</h3>
     <div style="margin-bottom:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:8px;font-weight:600">Appearance / Theme</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${THEMES.map(t=>`<button class="btn ${getTheme()===t.id?'btn-blue':'btn-ghost'}" onclick="setTheme('${t.id}')">${t.label}</button>`).join('')}
+        ${THEMES.map(t=>`<button class="btn ${pendingSettings.theme===t.id?'btn-blue':'btn-ghost'}" onclick="optSetTheme('${t.id}')">${t.label}</button>`).join('')}
       </div>
       <p style="font-size:11px;color:var(--text2);margin-top:8px">Visual theme of the interface. Applied instantly and saved locally in this browser (default: Bold Modern).</p>
     </div>
@@ -684,7 +683,7 @@ function renderOptions(){
         ${brokers.map((b,i)=>`
           <div style="display:flex;gap:6px;align-items:center">
             <span style="min-width:180px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--text)">${b}</span>
-            <button class="btn btn-ghost" onclick="optDeleteBrokerImm(${i})">✕</button>
+            <button class="btn btn-ghost" onclick="optDeleteBroker(${i})">✕</button>
           </div>`).join('')}
         ${optShowNewBroker?`<div style="display:flex;gap:6px;align-items:center">
           <input id="opt-new-broker" placeholder="New broker…" value="${optNewBroker}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter'){event.preventDefault();optAddBrokerNew();}">
@@ -703,7 +702,7 @@ function renderOptions(){
         ${classes.map((cl,i)=>`
           <div style="display:flex;gap:6px;align-items:center">
             <span style="min-width:180px;padding:4px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:12px;color:var(--text)">${cl}</span>
-            <button class="btn btn-ghost" onclick="optDeleteClassImm(${i})">✕</button>
+            <button class="btn btn-ghost" onclick="optDeleteClass(${i})">✕</button>
           </div>`).join('')}
         ${optShowNewClass?`<div style="display:flex;gap:6px;align-items:center">
           <input id="opt-new-class" placeholder="New class…" value="${optNewClass}" maxlength="15" style="width:180px" onkeydown="if(event.key==='Enter'){event.preventDefault();optAddClassNew();}">
@@ -743,58 +742,71 @@ function renderInfo(){
   </div>`;
 }
 function optSetCurrency(c){pendingSettings.currency=c;document.getElementById('app').innerHTML=renderOptions();}
+// Aperçu instantané du thème sans persistance : pose data-theme en direct,
+// mais n'écrit dans localStorage qu'au Save (saveOptions).
+function optSetTheme(id){pendingSettings.theme=id;document.documentElement.setAttribute('data-theme',id);document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewBroker(){optShowNewBroker=!optShowNewBroker;if(optShowNewBroker){optNewBroker='';optNewBrokerErr=null;}document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewClass(){optShowNewClass=!optShowNewClass;if(optShowNewClass){optNewClass='';optNewClassErr=null;}document.getElementById('app').innerHTML=renderOptions();}
-async function optDeleteBrokerImm(i){
-  const val=(DATA.settings.brokers||[])[i];
+// Suppression différée : la confirmation d'impact est affichée immédiatement
+// (l'utilisateur doit connaître l'impact tout de suite), mais le retrait n'est
+// appliqué qu'à pendingSettings — le vidage réel des positions se fait au Save.
+async function optDeleteBroker(i){
+  const val=(pendingSettings.brokers||[])[i];
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.broker===val);
   if(used.length>0){
     if(!(await showConfirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?')))return;
-    DATA.cto=DATA.cto.map(p=>p.broker===val?{...p,broker:''}:p);
   }
-  DATA.settings.brokers=DATA.settings.brokers.filter((_,j)=>j!==i);
-  saveData();
+  pendingSettings.brokers=pendingSettings.brokers.filter((_,j)=>j!==i);
   document.getElementById('app').innerHTML=renderOptions();
 }
 function optAddBrokerNew(){
   const val=(document.getElementById('opt-new-broker')?.value||'').trim();
   optNewBroker=val;
   if(!val){optNewBrokerErr='Name cannot be empty.';document.getElementById('app').innerHTML=renderOptions();return;}
-  if((DATA.settings.brokers||[]).some(b=>b.toLowerCase()===val.toLowerCase())){optNewBrokerErr='"'+val+'" already exists.';document.getElementById('app').innerHTML=renderOptions();return;}
+  if((pendingSettings.brokers||[]).some(b=>b.toLowerCase()===val.toLowerCase())){optNewBrokerErr='"'+val+'" already exists.';document.getElementById('app').innerHTML=renderOptions();return;}
   optNewBrokerErr=null;optNewBroker='';optShowNewBroker=false;
-  if(!DATA.settings.brokers)DATA.settings.brokers=[];
-  DATA.settings.brokers.push(val);
-  saveData();
+  if(!pendingSettings.brokers)pendingSettings.brokers=[];
+  pendingSettings.brokers.push(val);
   document.getElementById('app').innerHTML=renderOptions();
 }
-async function optDeleteClassImm(i){
-  const val=(DATA.settings.classes||[])[i];
+async function optDeleteClass(i){
+  const val=(pendingSettings.classes||[])[i];
   if(val==null)return;
   const used=(DATA.cto||[]).filter(p=>p.classe===val);
   if(used.length>0){
     if(!(await showConfirm('"'+val+'" is used in '+used.length+' position(s). Deleting it will clear this field in Securities. Continue?')))return;
-    DATA.cto=DATA.cto.map(p=>p.classe===val?{...p,classe:''}:p);
   }
-  DATA.settings.classes=DATA.settings.classes.filter((_,j)=>j!==i);
-  saveData();
+  pendingSettings.classes=pendingSettings.classes.filter((_,j)=>j!==i);
   document.getElementById('app').innerHTML=renderOptions();
 }
 function optAddClassNew(){
   const val=(document.getElementById('opt-new-class')?.value||'').trim();
   optNewClass=val;
   if(!val){optNewClassErr='Name cannot be empty.';document.getElementById('app').innerHTML=renderOptions();return;}
-  if((DATA.settings.classes||[]).some(c=>c.toLowerCase()===val.toLowerCase())){optNewClassErr='"'+val+'" already exists.';document.getElementById('app').innerHTML=renderOptions();return;}
+  if((pendingSettings.classes||[]).some(c=>c.toLowerCase()===val.toLowerCase())){optNewClassErr='"'+val+'" already exists.';document.getElementById('app').innerHTML=renderOptions();return;}
   optNewClassErr=null;optNewClass='';optShowNewClass=false;
-  if(!DATA.settings.classes)DATA.settings.classes=[];
-  DATA.settings.classes.push(val);
-  saveData();
+  if(!pendingSettings.classes)pendingSettings.classes=[];
+  pendingSettings.classes.push(val);
   document.getElementById('app').innerHTML=renderOptions();
 }
 function saveOptions(){
+  // Vidage différé : les brokers/classes retirés de pendingSettings sont maintenant
+  // effacés des positions concernées (rien n'a été touché avant ce Save).
+  const oldBrokers=DATA.settings.brokers||[];
+  const removedBrokers=oldBrokers.filter(b=>!(pendingSettings.brokers||[]).includes(b));
+  if(removedBrokers.length) DATA.cto=(DATA.cto||[]).map(p=>removedBrokers.includes(p.broker)?{...p,broker:''}:p);
+  const oldClasses=DATA.settings.classes||[];
+  const removedClasses=oldClasses.filter(c=>!(pendingSettings.classes||[]).includes(c));
+  if(removedClasses.length) DATA.cto=(DATA.cto||[]).map(p=>removedClasses.includes(p.classe)?{...p,classe:''}:p);
+  DATA.settings.brokers=pendingSettings.brokers||[];
+  DATA.settings.classes=pendingSettings.classes||[];
+  localStorage.setItem('pt-theme',pendingSettings.theme||'bold');applyTheme();
+
   const oldCur=DATA.settings?.currency||'eur';
   const newCur=pendingSettings.currency||'eur';
   DATA.settings.currency=newCur;
+  let saveMsg='✅ Settings saved',saveColor='#166534';
   if(oldCur!==newCur){
     for(const key of ['ctoTrades','cryptoTrades']){
       DATA[key]=(DATA[key]||[]).map(t=>{
@@ -810,11 +822,13 @@ function saveOptions(){
         purchases:(p.purchases||[]).map(l=>{const ul={...l};invalidateFxSource(ul,'fxRateSource');return ul;})
       }));
     }
-    toast('⚠️ Display currency changed — FX rates for exits invalidated. Please re-sync.','#92400e');
+    saveMsg='⚠️ Settings saved — display currency changed, FX rates for exits invalidated. Please re-sync.';
+    saveColor='#92400e';
   }
   saveData();render();
+  toast(saveMsg,saveColor);
 }
-function cancelOptions(){pendingSettings=JSON.parse(JSON.stringify(DATA.settings));document.getElementById('app').innerHTML=renderOptions();}
+function cancelOptions(){pendingSettings=JSON.parse(JSON.stringify(DATA.settings));pendingSettings.theme=getTheme();applyTheme();document.getElementById('app').innerHTML=renderOptions();}
 function exportJSON(){
   const b=new Blob([JSON.stringify(DATA,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);
