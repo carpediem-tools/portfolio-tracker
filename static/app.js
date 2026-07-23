@@ -135,6 +135,8 @@ async function syncAll(){
   await syncHistoFx();
   if((DATA.ctoTrades||[]).length) await syncFx('ctoTrades');
   if((DATA.cryptoTrades||[]).length) await syncFx('cryptoTrades');
+  if((DATA.cto||[]).some(p=>(p.purchases||[]).some(l=>l.date))) await syncLotFx('cto');
+  if((DATA.crypto||[]).some(p=>(p.purchases||[]).some(l=>l.date))) await syncLotFx('crypto');
 }
 function toast(msg,bg){
   document.querySelectorAll('.toast').forEach(e=>e.remove());
