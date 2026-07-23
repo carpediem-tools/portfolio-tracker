@@ -25,6 +25,8 @@ function strictNum(str){
 // Toute modification des devises acceptées ou de la logique de parsing
 // doit être répercutée manuellement dans les deux fichiers.
 let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorMsg=null;
+// Sous-vue par écran d'actifs (remplace les onglets Sales) : 'positions' | 'sales'
+let spotView={cto:'positions',crypto:'positions'};
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
 let histoSortAsc=true;
@@ -35,14 +37,19 @@ const fxSyncAttempted={ctoTrades:false,cryptoTrades:false};
 const TABS=[
   {id:'dashboard',label:'📊 Dashboard'},
   {id:'cto',label:'💼 Securities'},
-  {id:'ctoES',label:'📋 Securities Sales'},
   {id:'crypto',label:'🪙 Cryptos'},
-  {id:'cryptoES',label:'📋 Cryptos Sales'},
   {id:'historique',label:'📅 History'},
   {id:'options',label:'⚙️ Options'},
   {id:'info',label:'ℹ️ Info'}
 ];
 const COLORS=['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#ef4444'];
+
+// Thème d'interface — préférence navigateur (localStorage), défaut 'bold'. Posé sur
+// <html data-theme=...> ; style.css contient les jeux de variables des 3 thèmes.
+const THEMES=[{id:'terminal',label:'Terminal Pro'},{id:'bank',label:'Private Bank'},{id:'bold',label:'Bold Modern'}];
+function getTheme(){return localStorage.getItem('pt-theme')||'bold';}
+function applyTheme(){document.documentElement.setAttribute('data-theme',getTheme());}
+function setTheme(id){localStorage.setItem('pt-theme',id);applyTheme();render();}
 
 // API
 async function loadData(){
@@ -497,15 +504,26 @@ function render(){
   const app=document.getElementById('app');
   if(currentTab==='options')       app.innerHTML=renderOptions();
   else if(currentTab==='dashboard')     app.innerHTML=renderDash();
-  else if(currentTab==='cto')      app.innerHTML=renderSpot('cto');
-  else if(currentTab==='crypto')   app.innerHTML=renderSpot('crypto');
-  else if(currentTab==='ctoES')    app.innerHTML=renderES('cto');
-  else if(currentTab==='cryptoES') app.innerHTML=renderES('crypto');
+  else if(currentTab==='cto')      app.innerHTML=spotView.cto==='sales'?renderES('cto'):renderSpot('cto');
+  else if(currentTab==='crypto')   app.innerHTML=spotView.crypto==='sales'?renderES('crypto'):renderSpot('crypto');
   else if(currentTab==='info')     app.innerHTML=renderInfo();
   else app.innerHTML=renderHisto();
 }
 function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
 function toggleExp(k){expanded[k]=!expanded[k];render();}
+// Sous-navigation Open positions | Sales — intégrée à l'en-tête de l'écran d'actifs.
+function setSpotView(type,v){spotView[type]=v;render();}
+function subNav(type){
+  const v=spotView[type]||'positions';
+  const label=type==='cto'?'💼 Securities':'🪙 Cryptos';
+  return `<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+    <h3 style="margin:0">${label}</h3>
+    <div class="subnav">
+      <button class="subnav-btn ${v==='positions'?'active':''}" onclick="setSpotView('${type}','positions')">Open positions</button>
+      <button class="subnav-btn ${v==='sales'?'active':''}" onclick="setSpotView('${type}','sales')">Sales</button>
+    </div>
+  </div>`;
+}
 
 // Pie
 const PIE_SMALL_PCT=0.02;
@@ -635,6 +653,13 @@ function renderOptions(){
   const brokers=DATA.settings.brokers||[];
   const classes=DATA.settings.classes||[];
   return `<div class="card"><h3>⚙️ Options</h3>
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:8px;font-weight:600">Appearance / Theme</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${THEMES.map(t=>`<button class="btn ${getTheme()===t.id?'btn-blue':'btn-ghost'}" onclick="setTheme('${t.id}')">${t.label}</button>`).join('')}
+      </div>
+      <p style="font-size:11px;color:var(--text2);margin-top:8px">Visual theme of the interface. Applied instantly and saved locally in this browser (default: Bold Modern).</p>
+    </div>
     <div style="margin-bottom:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:8px;font-weight:600">Currency</label>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -883,15 +908,15 @@ function renderDash(){
       <div class="kpi-label" style="font-size:12px">Total valuation (${displayCur.toUpperCase()})</div>
       <div class="kpi-value" style="color:var(--accent);font-size:21px">${fmt(totV)}</div>
     </div>
-    ${excludedCount?`<div class="kpi" style="border-color:#92400e">
-      <div class="kpi-label" style="color:#f59e0b">⚠️ Excluded positions</div>
-      <div class="kpi-value" style="color:#f59e0b;font-size:14px">${excludedCount} without currency or FX</div>
+    ${excludedCount?`<div class="kpi" style="border-color:var(--banner-border)">
+      <div class="kpi-label" style="color:var(--orange)">⚠️ Excluded positions</div>
+      <div class="kpi-value" style="color:var(--orange);font-size:14px">${excludedCount} without currency or FX</div>
     </div>`:''}
   </div>
-  ${shouldShowFxBanner()?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
+  ${shouldShowFxBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
     ⚠️ Some FX rates are missing — a sync is recommended.
   </div>`:''}
-  ${shouldShowTemporalBanner()?`<div style="background:#2a1f08;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#fbbf24">
+  ${shouldShowTemporalBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
     ⚠️ Some positions have a negative stock at some point in time — check your buys and sales.
   </div>`:''}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
@@ -997,7 +1022,7 @@ function renderSpot(type){
       });
       if(p.purchases.length){
         const tf=p.purchases.reduce((s,x)=>s+(x.fees||0),0);
-        sub+=`<tr style="background:#0f1630;border-top:2px solid var(--accent)">
+        sub+=`<tr style="background:var(--computed-bg);border-top:2px solid var(--accent)">
           <td style="font-weight:700;color:var(--accent)">Total</td>
           <td class="r mono" style="font-weight:700;color:var(--accent)">${fmtQ(c.tq)}</td>
           <td class="r mono" style="color:var(--accent)">—</td>
@@ -1032,7 +1057,7 @@ function renderSpot(type){
     <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
     <th class="r">P&L</th><th class="r">Weight</th><th></th>`;
   return`<div class="card">
-    <h3>${isCto?'💼 Securities — Open positions':'🪙 Cryptos — Open positions'}</h3>
+    ${subNav(type)}
     <div class="kpis">
       <div class="kpi">
         <div class="kpi-label">Invested (${displayCur.toUpperCase()})</div>
@@ -1055,9 +1080,9 @@ function renderSpot(type){
       <table class="resp-tbl">${colgroupSpot}<thead><tr>${hdrs}</tr></thead><tbody>${rows}</tbody></table>
     </div>
     <div class="legend">
-      <span style="background:#0a2a15;color:var(--green)">🟢 Today's price</span>
-      <span style="background:#2a2a08;color:#eab308">🟡 Stale price (sync needed)</span>
-      <span style="background:#2a0f0f;color:var(--red)">🔴 Sync failed</span>
+      <span style="background:var(--today-bg);color:var(--today-fg)">🟢 Today's price</span>
+      <span style="background:var(--stale-bg);color:var(--stale-fg)">🟡 Stale price (sync needed)</span>
+      <span style="background:var(--err-bg);color:var(--err-fg)">🔴 Sync failed</span>
     </div>
   </div>`;
 }
@@ -1145,7 +1170,7 @@ function maxSellableAt(pos,trades,sellDate,excludeId){
   return dispo<0?0:dispo;
 }
 // Navigation depuis une cession vers sa position d'origine (identification cliquable).
-function goToPos(type,posId){expanded[type+posId]=true;switchTab(type);}
+function goToPos(type,posId){expanded[type+posId]=true;spotView[type]='positions';switchTab(type);}
 async function syncFx(key){
   if(!(DATA[key]||[]).length){toast('⚠️ No price to sync','#7f1d1d');return;}
   fxSyncAttempted[key]=true;
@@ -1211,7 +1236,7 @@ function renderES(type){
   const trades=DATA[key]||[];
   const kpi=calcSalesKpis(type);
   const cur=getCur().code.toUpperCase();
-  const badge=`<span style="font-size:9px;background:#2a0f0f;color:var(--red);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
+  const badge=`<span style="font-size:9px;background:var(--err-bg);color:var(--err-fg);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
   // [v3.0] Tri d'affichage par sellDate sur une COPIE {t,i} — jamais le tableau stocké.
   // upTrade/delTrade opèrent sur l'id réel de la cession (§4.11).
   const display=trades.map((t,i)=>({t,i})).sort((a,b)=>{
@@ -1255,7 +1280,7 @@ function renderES(type){
   </tr>`}).join('');
   const colgroup=`<colgroup>${(isCto?[9,8,6,5,7,7,7,7,6,6,7,8,7,5,5]:[11,6,8,8,8,8,7,7,8,8,7,6,8]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>`;
   return`<div class="card">
-    <h3>${isCto?'📋 Securities — Sales':'📋 Cryptos — Sales'}</h3>
+    ${subNav(type)}
     <div class="kpis">
       <div class="kpi">
         <div class="kpi-label">Realized P&L (${cur})</div>
@@ -1274,9 +1299,9 @@ function renderES(type){
         <div class="kpi-label">P&L %</div>
         <div class="kpi-value ${kpi.pctTotal!=null?gpC(kpi.pctTotal):''}">${kpi.pctTotal!=null?fmtP(kpi.pctTotal):'—'}</div>
       </div>
-      ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div class="kpi" style="border-color:#92400e">
-        <div class="kpi-label" style="color:#f59e0b">⚠️ No FX rate</div>
-        <div class="kpi-value" style="color:#f59e0b;font-size:14px">${kpi.countNoFx} row${kpi.countNoFx>1?'s':''}</div>
+      ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div class="kpi" style="border-color:var(--banner-border)">
+        <div class="kpi-label" style="color:var(--orange)">⚠️ No FX rate</div>
+        <div class="kpi-value" style="color:var(--orange);font-size:14px">${kpi.countNoFx} row${kpi.countNoFx>1?'s':''}</div>
       </div>`:''}
     </div>
     <div class="toolbar">
@@ -1323,7 +1348,7 @@ function renderHisto(){
     <td style="font-size:11px;color:var(--text2)">${(h.currency||'eur').toUpperCase()}</td>
     <td class="${histoFxBg(h.fxRateSource)}" style="font-size:12px">
       ${histoFxIco(h.fxRateSource)} ${h.fxRate!=null?h.fxRate.toFixed(2):'—'}
-      ${h.year===currentYear?`<br><span style="font-size:9px;color:#f59e0b">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
+      ${h.year===currentYear?`<br><span style="font-size:9px;color:var(--orange)">⚠️ Dec 31 not yet available — using today's rate</span>`:''}
     </td>
     <td class="r mono">${fmtNative(h.securities||0,h.currency||'eur')}</td>
     <td class="r mono">${fmtNative(h.crypto||0,h.currency||'eur')}</td>
@@ -1633,7 +1658,8 @@ async function saleDialog(type,posId,tradeId){
       ...patch,
       fxRateSell:fxSell.rate,fxRateSellSource:fxSell.source});
     saveData();
-    switchTab(isCto?'ctoES':'cryptoES');
+    spotView[isCto?'cto':'crypto']='sales';
+    switchTab(isCto?'cto':'crypto');
   }else{
     upTrade(key,tradeId,patch);   // invalide fxRateSellSource → 'ko' si sellDate a changé
     // FX manuel appliqué APRÈS upTrade : un taux saisi l'emporte sur l'invalidation de sellDate.
@@ -1749,4 +1775,5 @@ function exportZIP(){
 }
 
 if(!document.getElementById('chart-tooltip'))document.body.insertAdjacentHTML('beforeend','<div id="chart-tooltip"></div>');
+applyTheme();
 loadData();

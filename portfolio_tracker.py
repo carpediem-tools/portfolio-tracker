@@ -220,9 +220,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers(); return
         ext = filepath.suffix.lower()
         content_types = {
-            ".html": "text/html; charset=utf-8",
-            ".css":  "text/css; charset=utf-8",
-            ".js":   "application/javascript; charset=utf-8",
+            ".html":  "text/html; charset=utf-8",
+            ".css":   "text/css; charset=utf-8",
+            ".js":    "application/javascript; charset=utf-8",
+            ".woff2": "font/woff2",
         }
         ct = content_types.get(ext, "application/octet-stream")
         body = filepath.read_bytes()
