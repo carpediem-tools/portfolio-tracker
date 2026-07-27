@@ -1017,7 +1017,6 @@ function renderDash(){
     const v=convertValo(p,p.c);if(v!=null)return s+v;excludedCount++;return s;
   },0);
   cls.push({name:'Cryptos',valo:crValo});
-  const totV=cls.reduce((s,c)=>s+c.valo,0);
   const bmap={};
   ctoC.filter(p=>valoOk(p)).forEach(p=>{
     const b=p.broker||'?';
@@ -1025,6 +1024,21 @@ function renderDash(){
     if(v!=null)bmap[b]=(bmap[b]||0)+v;
   });
   const bPie=Object.entries(bmap).map(([name,valo])=>({name,valo}));
+  // KPI consolidés CTO + Crypto — périmètre IDENTIQUE à celui de renderSpot (§4.10) :
+  // livePrice ET investedRemaining calculable. C'est cette identité de filtre qui garantit
+  // l'égalité « Dashboard = Securities + Crypto » à l'euro près. Ne JAMAIS l'aligner sur
+  // valoOk (le filtre des camemberts) : une position à wacBase null a une valorisation
+  // connue (FX courant présent) mais un coût d'achat inconnu (FX du lot manquant), donc un
+  // P&L indéfini — elle doit rester dans les camemberts et sortir des KPI.
+  // investedRemaining est DÉJÀ en devise de reporting : jamais de convert() dessus.
+  const kpiPriced=[...ctoC,...crC].filter(p=>p.livePrice&&p.c.investedRemaining!=null);
+  const kpiI=kpiPriced.reduce((s,p)=>s+p.c.investedRemaining,0);
+  const kpiV=kpiPriced.reduce((s,p)=>{
+    const v=convert(p.c.valo,p.currency,displayCur);   // valo NATIVE → convert() nécessaire
+    return v!=null?s+v:s;
+  },0);
+  const kpiGP=kpiV-kpiI;
+  const kpiPct=kpiI>0?kpiGP/kpiI:null;
   // [v2.2] Le `&&` porte l'invariant : hasArchivedFxCulprit n'est évaluée que si le bandeau est
   // DÉJÀ déclenché, et ne pilote qu'une phrase. Corollaire gratuit : la mention n'apparaît pas
   // quand la seule cause est la condition 1 (fxRates vide), qui n'a aucun coupable identifiable.
@@ -1050,8 +1064,20 @@ function renderDash(){
   }).join('');
   return`<div class="kpis">
     <div class="kpi">
-      <div class="kpi-label" style="font-size:12px">Total valuation (${displayCur.toUpperCase()})</div>
-      <div class="kpi-value" style="color:var(--accent);font-size:21px">${fmt(totV)}</div>
+      <div class="kpi-label" style="font-size:12px">Invested (${displayCur.toUpperCase()})</div>
+      <div class="kpi-value" style="color:var(--accent);font-size:21px">${kpiI?fmt(kpiI):'—'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" style="font-size:12px">Valuation (${displayCur.toUpperCase()})</div>
+      <div class="kpi-value" style="color:var(--accent);font-size:21px">${kpiV?fmt(kpiV):'—'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" style="font-size:12px">P&L (${displayCur.toUpperCase()})</div>
+      <div class="kpi-value ${gpC(kpiGP)}" style="font-size:21px">${kpiI?fmt(kpiGP):'—'}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label" style="font-size:12px">P&L %</div>
+      <div class="kpi-value ${kpiPct!=null?gpC(kpiPct):''}" style="font-size:21px">${kpiPct!=null?fmtP(kpiPct):'—'}</div>
     </div>
     ${excludedCount?`<div class="kpi" style="border-color:var(--banner-border)">
       <div class="kpi-label" style="color:var(--orange)">⚠️ Excluded positions</div>
@@ -1237,10 +1263,15 @@ function renderSpot(type){
         <div class="kpi-label">P&L (${displayCur.toUpperCase()})</div>
         <div class="kpi-value ${gpC(totGP)}">${totI?fmt(totGP):'—'}</div>
       </div>
+      <div class="kpi">
+        <div class="kpi-label">P&L %</div>
+        <div class="kpi-value ${totI>0?gpC(totGP/totI):''}">${totI>0?fmtP(totGP/totI):'—'}</div>
+      </div>
     </div>
-    <div class="toolbar">${syncBtn}
-      <button class="btn" onclick="syncLotFx('${type}')">🔄 Sync FX rates</button>
+    <div class="toolbar">
       <button class="btn btn-blue" onclick="addPos('${type}')">+ Add position</button>
+      ${syncBtn}
+      <button class="btn" onclick="syncLotFx('${type}')">🔄 Sync FX rates</button>
     </div>
     <div style="overflow-x:auto;max-width:100%">
       <table class="resp-tbl">${colgroupSpot}<thead><tr>${hdrs}</tr></thead><tbody>${rows}</tbody></table>
@@ -1524,17 +1555,17 @@ function renderES(type){
     ${subNav(type)}
     <div class="kpis">
       <div class="kpi">
-        <div class="kpi-label">Realized P&L (${cur})</div>
-        <div class="kpi-value ${gpC(kpi.gpTotal)}">${kpi.countFx?fmt(kpi.gpTotal):'—'}</div>
-        ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div style="color:var(--text2);font-size:11px">(${kpi.countNoFx} trade${kpi.countNoFx>1?'s':''} without FX rate excluded)</div>`:''}
-      </div>
-      <div class="kpi">
         <div class="kpi-label">Total B (${cur})</div>
         <div class="kpi-value" style="color:var(--accent)">${kpi.countFx?fmt(kpi.totalB):'—'}</div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Total S (${cur})</div>
         <div class="kpi-value" style="color:var(--accent)">${kpi.countFx?fmt(kpi.totalS):'—'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Realized P&L (${cur})</div>
+        <div class="kpi-value ${gpC(kpi.gpTotal)}">${kpi.countFx?fmt(kpi.gpTotal):'—'}</div>
+        ${fxSyncAttempted[key]&&kpi.countNoFx>0?`<div style="color:var(--text2);font-size:11px">(${kpi.countNoFx} trade${kpi.countNoFx>1?'s':''} without FX rate excluded)</div>`:''}
       </div>
       <div class="kpi">
         <div class="kpi-label">P&L %</div>
