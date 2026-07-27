@@ -926,8 +926,21 @@ function importJSON(input){
 // problème FX → il relève désormais de shouldShowOrphanBanner. Détection FX = taux de vente
 // absent ou ko. La condition wacBase == null reste ici : c'est un vrai signal FX (règle tout-ou-rien
 // sur les lots), et getFx() vide reste la condition « aucun taux chargé ».
+// [v3.2] La condition 1 (fxRates vide) est le SEUL test global de cette fonction :
+// les conditions 2 à 5 itèrent sur cto/crypto/ctoTrades/cryptoTrades et sont donc
+// naturellement vides sur un portefeuille neuf, elle non. Sur une install vierge
+// (DEFAULT_DATA ne porte pas de clé fxRates → getFx() vaut {}), elle allumait le
+// bandeau sans qu'aucune donnée ne demande de conversion — un avertissement que
+// l'utilisateur ne peut relier à rien de visible. hasFxScope lui rend le périmètre
+// que les autres conditions tiennent de leur itération. Test volontairement grossier
+// (présence, pas besoin réel de conversion) : le resserrer imposerait de répliquer
+// ici la logique de convert(), au prix d'un second point de vérité.
+// L'historique n'entre PAS dans ce périmètre : convertHistoRow lit h.fxRate porté
+// par la ligne, jamais la table fxRates.
 function shouldShowFxBanner(){
-  if(Object.keys(getFx()).length===0)return true;
+  const hasFxScope=(DATA.cto||[]).length>0||(DATA.crypto||[]).length>0
+    ||(DATA.ctoTrades||[]).length>0||(DATA.cryptoTrades||[]).length>0;
+  if(hasFxScope&&Object.keys(getFx()).length===0)return true;
   if((DATA.cto||[]).some(p=>calcPos(p,DATA.ctoTrades).wacBase==null))return true;
   if((DATA.crypto||[]).some(p=>calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
   if((DATA.ctoTrades||[]).some(t=>t.fxRateSell==null||t.fxRateSellSource==='ko'))return true;
