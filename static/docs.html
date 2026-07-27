@@ -41,7 +41,6 @@ li{margin:5px 0}
 </head>
 <body>
 <div class="page-wrap">
-
 <h1>📊 Portfolio Tracker — User Documentation</h1>
 <p class="subtitle">100% local investment tracker &middot; Python 3.13 &middot; <code>http://localhost:8080</code></p>
 
@@ -52,7 +51,7 @@ li{margin:5px 0}
     <li><a href="#2-dashboard-tab">Dashboard tab</a></li>
     <li><a href="#3-securities-tab">Securities tab</a></li>
     <li><a href="#4-cryptos-tab">Cryptos tab</a></li>
-    <li><a href="#5-sales-tabs">Securities Sales / Crypto Sales tabs</a></li>
+    <li><a href="#5-sales-tabs">Sales views (Securities and Cryptos)</a></li>
     <li><a href="#6-history-tab">History tab</a></li>
     <li><a href="#7-options-tab">Options tab</a></li>
     <li><a href="#8-currencies--complete-guide">Currencies — complete guide</a></li>
@@ -63,1239 +62,2028 @@ li{margin:5px 0}
     <li><a href="#13-price-synchronization">Price synchronization</a></li>
     <li><a href="#14-data-and-storage">Data and storage</a></li>
     <li><a href="#15-csv-export">CSV export</a></li>
+    <li><a href="#16-info-tab">Info tab</a></li>
   </ol>
 </div>
 
-<hr>
 
-<h2 id="1-general-architecture">1. General architecture</h2>
-
+<hr />
+<hr />
+<p><a id="1-general-architecture"></a></p>
+<h2>1. General architecture</h2>
 <p>The tracker runs entirely locally, with no cloud or mandatory external dependencies.</p>
-
 <table>
-  <thead><tr><th>Component</th><th>Details</th></tr></thead>
-  <tbody>
-    <tr><td>Server</td><td><code>http.server</code> Python, <code>localhost:8080</code></td></tr>
-    <tr><td>Data</td><td><code>portfolio_data.json</code> — same folder as the script</td></tr>
-    <tr><td>Stock prices</td><td>Yahoo Finance via <code>yfinance</code> (pip) or direct HTTP fallback</td></tr>
-    <tr><td>Crypto prices</td><td>CoinGecko public API, no key required</td></tr>
-    <tr><td>Daily FX rates</td><td>Yahoo Finance — EUR-based pairs for all supported currencies (EUR, USD, CHF, GBP, JPY, HKD, CNY) — Dashboard consolidations</td></tr>
-    <tr><td>Historical FX rates</td><td>Frankfurter API (ECB) — realized P&amp;L in Sales screens</td></tr>
-    <tr><td>Frontend</td><td>HTML/CSS/JS vanilla, served as static files from the <code>static/</code> directory</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Component</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server</td>
+<td><code>http.server</code> Python, <code>localhost:8080</code></td>
+</tr>
+<tr>
+<td>Data</td>
+<td><code>portfolio_data.json</code> — same folder as the script</td>
+</tr>
+<tr>
+<td>Stock prices</td>
+<td>Yahoo Finance via <code>yfinance</code> (pip) or direct HTTP fallback</td>
+</tr>
+<tr>
+<td>Crypto prices</td>
+<td>CoinGecko public API, no key required</td>
+</tr>
+<tr>
+<td>Daily FX rates</td>
+<td>Yahoo Finance — EUR-based pairs for all supported currencies (EUR, USD, CHF, GBP, JPY, HKD, CNY) — Dashboard consolidations</td>
+</tr>
+<tr>
+<td>Historical FX rates</td>
+<td>Frankfurter API (ECB) — purchase-lot cost basis, realized P&amp;L in the Sales views, annual History totals</td>
+</tr>
+<tr>
+<td>Frontend</td>
+<td>HTML/CSS/JS vanilla, served as static files from the <code>static/</code> directory</td>
+</tr>
+</tbody>
 </table>
-
 <p><strong>No automatic synchronization.</strong> All prices and rates are fetched only when the 🔄 button is clicked.</p>
-
-<hr>
-
-<h2 id="2-dashboard-tab">2. Dashboard tab</h2>
-
+<hr />
+<p><a id="2-dashboard-tab"></a></p>
+<h2>2. Dashboard tab</h2>
 <p>Consolidated view of the entire portfolio.</p>
-
-<h3>Main KPI</h3>
-<ul>
-  <li><strong>Total valuation</strong> converted to the currency selected in Options (today's rate).</li>
-  <li>Only positions with a live price AND a configured currency contribute to the total.</li>
-  <li>A position whose valuation is <strong>unavailable</strong> — because its running stock goes negative at some point in time (more sold than held on a given date) — is left out of the total, exactly like a position without a price.</li>
-  <li>When positions are dropped for a missing currency or FX rate, an <strong>⚠️ Excluded positions</strong> indicator shows how many.</li>
-</ul>
-
+<h3>Consolidated KPIs</h3>
+<p>Four figures summarize the whole portfolio — Securities <strong>and</strong> Cryptos combined — in the currency selected in Options:</p>
+<table>
+<thead>
+<tr>
+<th>KPI</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Invested</strong></td>
+<td>What the quantities you still hold cost you</td>
+</tr>
+<tr>
+<td><strong>Valuation</strong></td>
+<td>What they are worth today</td>
+</tr>
+<tr>
+<td><strong>P&amp;L</strong></td>
+<td><code>Valuation − Invested</code></td>
+</tr>
+<tr>
+<td><strong>P&amp;L %</strong></td>
+<td><code>P&amp;L / Invested</code>, shown as <code>—</code> when Invested is zero</td>
+</tr>
+</tbody>
+</table>
+<p><strong>These four figures equal the sum of the Securities and Cryptos tabs.</strong> Adding up the Invested of both tabs gives exactly the Dashboard's Invested, and the same holds for the other three. If they ever disagree, something is wrong.</p>
+<p>A position takes part in these KPIs only if it has <strong>both</strong> a live price <strong>and</strong> a known cost basis. The cost basis requires every purchase lot to carry a resolved exchange rate — so a position with one unsynced lot rate has a valuation but no computable P&amp;L, and stays out of all four figures. Whenever that happens, the <strong>⚠️ Missing FX rates</strong> banner is already on screen, and a sync brings the position back in.</p>
+<p>A position whose valuation is <strong>unavailable</strong> — because its running stock goes negative at some point in time (more sold than held on a given date) — is left out as well, exactly like a position without a price.</p>
+<blockquote>
+<p>The pie charts below use a <strong>wider</strong> scope: they include positions with a known value even when the cost basis is missing, since you do own them. Adding up the labels of a pie chart can therefore exceed the Valuation KPI. The gap only exists while a lot rate is unsynced.</p>
+</blockquote>
+<p>When positions are dropped from the <strong>breakdowns</strong> for a missing currency or FX rate, an <strong>⚠️ Excluded positions</strong> indicator shows how many.</p>
 <h3>Consistency banners</h3>
-<p>Two independent banners may appear above the charts; they cover different problems and can show at the same time:</p>
+<p>Three independent banners may appear above the charts. Each covers a different kind of problem, and any combination of them can show at the same time:</p>
 <ul>
-  <li><strong>⚠️ Missing FX rates</strong> — at least one rate needed for a consolidation has not been synced yet. A sync is recommended.</li>
-  <li><strong>⚠️ Negative stock</strong> — at least one Securities or Crypto position sells more than it holds at some point in time (its running stock goes below zero on a given date). This is a <strong>chronology</strong> problem, distinct from the FX banner: check the buy and sell dates and quantities of the flagged position.</li>
+<li><strong>⚠️ Missing FX rates</strong> — at least one exchange rate needed for a consolidation has not been synced yet. This is the only banner a sync can clear.</li>
+<li><strong>⚠️ Negative stock</strong> — at least one Securities or Crypto position sells more than it holds at some point in time (its running stock goes below zero on a given date). This is a <strong>chronology</strong> problem: check the buy and sell dates and quantities of the flagged position.</li>
+<li><strong>⚠️ Cost basis unavailable</strong> — at least one sale references a <strong>deleted position</strong>, or has no purchase lot dated on or before its sell date. Its cost basis and P&amp;L cannot be computed. <strong>Syncing does not help here</strong> — the fix is either to restore the missing purchase history or to delete the affected sale.</li>
 </ul>
-
 <h3>Pie charts</h3>
-<p>Four breakdown charts, all expressed in the <strong>Options currency</strong> (converted at today's rate):</p>
-<ul>
-  <li>By asset class — one segment per asset class defined in Options, plus an automatic <strong>Cryptos</strong> segment grouping all crypto positions and a <strong>?</strong> segment for securities that have no class assigned</li>
-  <li>Individual CTO positions</li>
-  <li>Individual Crypto positions</li>
-  <li>By broker (CTO only)</li>
-</ul>
-
-<blockquote><p>⚠️ If exchange rates have not been synced yet, positions in other currencies will not appear in the pie charts.</p></blockquote>
-
+<p>Four breakdown charts, all expressed in the <strong>Options currency</strong> (converted at today's rate):
+- By asset class — one segment per asset class defined in Options, plus an automatic <strong>Cryptos</strong> segment grouping all crypto positions and a <strong>?</strong> segment for securities that have no class assigned
+- Individual CTO positions
+- Individual Crypto positions
+- By broker (CTO only)</p>
+<div class="warning"><p>⚠️ If exchange rates have not been synced yet, positions in other currencies will not appear in the pie charts.</p></div>
 <h3>Annual trend chart</h3>
 <p>Change in total valuation year over year, fed by data entered in the History tab.</p>
-
 <p>Each history row has its own entry currency. Each value is converted to the Options currency using the row's stored FX rate — the Frankfurter rate at December 31 of the row's year, or the rate at today's date when the row is the current year (for which December 31 has not yet occurred). Rows whose FX rate is missing or invalid are dropped from the chart. The axis and value labels use the symbol of the Options currency.</p>
-
 <h3>Annual snapshot table</h3>
 <p>Below the chart, a table summarizes, year by year: the Securities total, the Cryptos total, the overall Total, and the change (<code>%</code> vs. the previous year). All amounts are converted to the Options currency using each row's stored FX rate. A cell shows <code>—</code> when the FX rate required for that row is missing or invalid.</p>
-
-<hr>
-
-<h2 id="3-securities-tab">3. Securities tab</h2>
-
+<hr />
+<p><a id="3-securities-tab"></a></p>
+<h2>3. Securities tab</h2>
 <p>Open positions in an ordinary securities account.</p>
-
-<h3>Main columns</h3>
-
+<p>The tab holds three views, switched by the sub-navigation at the top: <strong>Open positions</strong> (this section), <strong>Archived</strong> (positions you have closed and put away — see <a href="#archiving-a-position">Archiving a position</a>), and <strong>Sales</strong> (see <a href="#5-sales-tabs">section 5</a>). The first two are the two states a position can be in; the third lists completed disposals.</p>
+<h3>Tab actions</h3>
+<p>Above the table, three buttons act on the whole tab:</p>
 <table>
-  <thead><tr><th>Column</th><th>Entry / Computed</th><th>Notes</th></tr></thead>
-  <tbody>
-    <tr><td>Name</td><td>Manual entry</td><td>Free label</td></tr>
-    <tr><td>ISIN</td><td>Manual entry</td><td>Optional, informational only</td></tr>
-    <tr><td>Yahoo Ticker</td><td>Manual entry, <strong>validated</strong></td><td>See <a href="#9-ticker-formats">section 9</a></td></tr>
-    <tr><td>Broker</td><td>Selection</td><td>Configurable list in Options</td></tr>
-    <tr><td>Class</td><td>Selection</td><td>Configurable list in Options</td></tr>
-    <tr><td><strong>Currency</strong></td><td><strong>Read-only, fetched from Yahoo Finance at sync</strong></td><td><code>—</code> before first sync — See <a href="#8-currencies--complete-guide">section 8</a></td></tr>
-    <tr><td>Qty</td><td><strong>Computed</strong></td><td>Quantity <strong>still held</strong> = bought − sold. When sales exist, the cell stacks total bought, quantity sold, and remaining</td></tr>
-    <tr><td>Avg cost</td><td><strong>Computed</strong></td><td>Weighted average cost per unit, fee-inclusive, in <strong>native</strong> currency (invariant to sales)</td></tr>
-    <tr><td>Invested</td><td><strong>Computed</strong></td><td>Cost basis of the quantity still held, in <strong>Options currency</strong> (converted at each lot's historical FX rate)</td></tr>
-    <tr><td>Live price</td><td>Sync or manual</td><td>Native currency, color based on freshness</td></tr>
-    <tr><td>Valuation</td><td><strong>Computed</strong></td><td>Remaining qty × live price, in <strong>Options currency</strong></td></tr>
-    <tr><td>Chg.</td><td><strong>Computed</strong></td><td>(Valuation − Invested) / Invested</td></tr>
-    <tr><td>P&amp;L</td><td><strong>Computed</strong></td><td>Valuation − Invested, in <strong>Options currency</strong></td></tr>
-    <tr><td>Weight</td><td><strong>Computed</strong></td><td>% of the tab's total invested</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>+ Add position</strong></td>
+<td>Opens the position popup in creation mode</td>
+</tr>
+<tr>
+<td><strong>🔄 Sync prices</strong></td>
+<td>Fetches the live price of every open position</td>
+</tr>
+<tr>
+<td><strong>🔄 Sync FX rates</strong></td>
+<td>Fetches the historical exchange rate of every purchase lot</td>
+</tr>
+</tbody>
 </table>
-
-<blockquote><p>Since V2.0, the per-row <strong>Invested</strong>, <strong>Valuation</strong>, <strong>P&amp;L</strong> and <strong>Weight</strong> are expressed in the <strong>Options currency</strong>, not the native currency. Invested is converted at each purchase lot's <em>own historical rate</em> (the rate on the lot's date), while Valuation is converted at today's rate — the same rate-matching logic a broker uses for realized results. Only <strong>Avg cost</strong> and <strong>Live price</strong> stay in the instrument's native currency.</p></blockquote>
-
+<h3>Consolidated KPIs</h3>
+<p>Above the buttons, four figures cover the tab's <strong>open</strong> positions: <strong>Invested</strong>, <strong>Valuation</strong>, <strong>P&amp;L</strong>, and <strong>P&amp;L %</strong> (<code>P&amp;L / Invested</code>, shown as <code>—</code> when Invested is zero). Archived positions are excluded — which changes nothing numerically, since an archived position is fully sold and therefore contributes zero to all four.</p>
+<p>Only positions with a live price <strong>and</strong> a known cost basis are counted. This is the same scope the Dashboard uses, which is why the two tabs add up to it exactly.</p>
+<h3>Main columns</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Entry / Computed</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td>Manual entry</td>
+<td>Free label</td>
+</tr>
+<tr>
+<td>ISIN</td>
+<td>Manual entry</td>
+<td>Optional, informational only</td>
+</tr>
+<tr>
+<td>Yahoo Ticker</td>
+<td>Manual entry, <strong>validated</strong></td>
+<td>See <a href="#9-ticker-formats">section 9</a></td>
+</tr>
+<tr>
+<td>Broker</td>
+<td>Selection</td>
+<td>Configurable list in Options</td>
+</tr>
+<tr>
+<td>Class</td>
+<td>Selection</td>
+<td>Configurable list in Options</td>
+</tr>
+<tr>
+<td><strong>Currency</strong></td>
+<td><strong>Read-only, fetched from Yahoo Finance at sync</strong></td>
+<td><code>—</code> before first sync — See <a href="#8-currencies--complete-guide">section 8</a></td>
+</tr>
+<tr>
+<td>Qty</td>
+<td><strong>Computed</strong></td>
+<td>Quantity <strong>still held</strong> = bought − sold. When sales exist, the cell stacks total bought, quantity sold, and remaining</td>
+</tr>
+<tr>
+<td>Avg cost</td>
+<td><strong>Computed</strong></td>
+<td>Weighted average cost per unit, fee-inclusive, in <strong>native</strong> currency (invariant to sales)</td>
+</tr>
+<tr>
+<td>Invested</td>
+<td><strong>Computed</strong></td>
+<td>Cost basis of the quantity still held, in <strong>Options currency</strong> (converted at each lot's historical FX rate)</td>
+</tr>
+<tr>
+<td>Live price</td>
+<td>Sync or manual</td>
+<td>Native currency, color based on freshness</td>
+</tr>
+<tr>
+<td>Valuation</td>
+<td><strong>Computed</strong></td>
+<td>Remaining qty × live price, in <strong>Options currency</strong></td>
+</tr>
+<tr>
+<td>Chg.</td>
+<td><strong>Computed</strong></td>
+<td>(Valuation − Invested) / Invested</td>
+</tr>
+<tr>
+<td>P&amp;L</td>
+<td><strong>Computed</strong></td>
+<td>Valuation − Invested, in <strong>Options currency</strong></td>
+</tr>
+<tr>
+<td>Weight</td>
+<td><strong>Computed</strong></td>
+<td>% of the tab's total invested</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The per-row <strong>Invested</strong>, <strong>Valuation</strong>, <strong>P&amp;L</strong> and <strong>Weight</strong> are expressed in the <strong>Options currency</strong>, not the native currency. Invested is converted at each purchase lot's <em>own historical rate</em> (the rate on the lot's date), while Valuation is converted at today's rate — the same rate-matching logic a broker uses for realized results. Only <strong>Avg cost</strong> and <strong>Live price</strong> stay in the instrument's native currency.</p>
+</blockquote>
 <h3>Creating and editing — everything through popups</h3>
-
-<p>Since V2.0, the table is <strong>display-only</strong>: there are no editable cells. All entry happens in popups:</p>
+<p>The table is <strong>display-only</strong>: there are no editable cells. All entry happens in popups:</p>
 <ul>
-  <li><strong>+ Add position</strong> / clicking a position's <strong>name</strong> → the position popup (Name, ISIN, Yahoo Ticker, Broker, Class).</li>
-  <li><strong>+ Add lot</strong> / clicking a purchase row → the lot popup (Date, Quantity, Unit price, Fees).</li>
+<li><strong>+ Add position</strong> / clicking a position's <strong>name</strong> → the position popup (Name, ISIN, Yahoo Ticker, Broker, Class).</li>
+<li><strong>+ Buy</strong> → the lot popup in creation mode (Date, Quantity, Unit price, Fees).</li>
+<li>The <strong>✏️ button at the end of a purchase row</strong> → the same popup, pre-filled, plus an <strong>FX rate (manual)</strong> field. The row itself is not clickable: the pencil is the single way in.</li>
 </ul>
-<p>Nothing is written until you validate the popup; <strong>Cancel</strong> discards everything.</p>
-<p><strong>A lot date is now mandatory.</strong> The date drives the whole dated cost-basis model (see below and <a href="#12-calculations">section 12</a>) — a lot cannot be saved without one.</p>
-
+<p>Nothing is written until you validate the popup; <strong>Cancel</strong> discards everything. Deleting a purchase lot asks for confirmation.</p>
+<p><strong>A lot date is mandatory.</strong> The date drives the whole dated cost-basis model (see below and <a href="#12-calculations">section 12</a>) — a lot cannot be saved without one.</p>
 <h3>Ticker entry</h3>
-
 <p>The ticker identifies the trading venue on Yahoo Finance. It is validated when the position popup is saved: a ticker with an unrecognized suffix is <strong>rejected</strong>, an error message lists the accepted suffixes, and nothing is written.</p>
-
 <p>Clearing a ticker resets the currency to <code>—</code>.</p>
-
-<blockquote><p><strong>Important:</strong> when the ticker changes, the live price is <strong>invalidated</strong> automatically (livePrice reset to null, ⚪ status indicator). The currency is <strong>not</strong> recalculated from the ticker — it remains as previously set by Yahoo Finance, and will be updated at the next sync.</p></blockquote>
-
+<blockquote>
+<p><strong>Important:</strong> when the ticker changes, the live price is <strong>invalidated</strong> automatically (livePrice reset to null, ⚪ status indicator). The currency is <strong>not</strong> recalculated from the ticker — it remains as previously set by Yahoo Finance, and will be updated at the next sync.</p>
+</blockquote>
 <h3>Currency</h3>
-
 <p>The currency field is read-only. It is set by Yahoo Finance at each price sync and reflects the actual trading currency of the instrument on its listed exchange. Before the first sync, it displays <code>—</code>.</p>
-
 <p>Positions with currency <code>—</code> are excluded from Dashboard KPIs and pie charts until a sync has been performed.</p>
-
 <p>See <a href="#8-currencies--complete-guide">section 8</a> for a full explanation of currency sources.</p>
-
 <h3>Purchase sub-table</h3>
-<p>Clicking a position expands its purchase lots. Each lot row shows:</p>
-<ul>
-  <li>Date, Qty, Price, Fees</li>
-  <li>Lot total = <code>qty × price + fees</code></li>
-  <li>Lot avg cost = <code>total / qty</code></li>
-  <li><strong>FX</strong> — the historical rate (native → Options currency) at the lot's date, with a ⚪🟢🟡🔴 status indicator and an ✏️ button for manual entry (same logic as the Sales screens, see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</li>
-</ul>
-
+<p>Clicking a position expands its purchase lots. Each lot row shows:
+- Date, Qty, Price, Fees
+- Lot total = <code>qty × price + fees</code>
+- Lot avg cost = <code>total / qty</code>
+- <strong>FX</strong> — the historical rate (native → Options currency) at the lot's date, with a ⚪🟢🟡🔴 status indicator
+- <strong>✏️</strong> to edit the lot, and <strong>✕</strong> to delete it (with confirmation)</p>
+<p>Editing a lot opens the lot popup, which also carries the <strong>FX rate (manual)</strong> field for that lot — the manual rate is entered there, alongside the other values, exactly as in the Sales view (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</p>
 <p>The <strong>🔄 Sync FX rates</strong> button in the toolbar fetches these per-lot historical rates from Frankfurter. They are what let the tracker express <strong>Invested</strong> in the Options currency at each lot's <em>own</em> rate.</p>
-
 <p>The <strong>Total</strong> row shows the overall quantity, cumulative fees, total invested (native), the overall native WAC, and — when every lot's FX rate is resolved — the overall cost basis in the Options currency.</p>
-
 <h3>Remaining quantity and negative-stock detection</h3>
-<p>The <strong>Qty</strong> column reflects the quantity <strong>still held</strong> (bought minus everything sold in the Sales tab, matched by position). The tracker also tracks the <em>running</em> stock along the timeline (buys add, sales subtract, in date order). If that running stock ever drops below zero — you recorded a sale of more units than were held on that date — the position is flagged <strong>Negative stock at <code>&lt;date&gt;</code></strong> and its Valuation, P&amp;L and Weight become unavailable (shown blank) until the buy/sell history is corrected. The same situation raises the Dashboard's <strong>Negative stock</strong> banner (see <a href="#2-dashboard-tab">section 2</a>).</p>
-
+<p>The <strong>Qty</strong> column reflects the quantity <strong>still held</strong> (bought minus everything sold in the Sales view, matched by position). The tracker also tracks the <em>running</em> stock along the timeline (buys add, sales subtract, in date order). If that running stock ever drops below zero — you recorded a sale of more units than were held on that date — the position is flagged <strong>Negative stock at <code>&lt;date&gt;</code></strong> and its Valuation, P&amp;L and Weight become unavailable (shown blank) until the buy/sell history is corrected. The same situation raises the Dashboard's <strong>Negative stock</strong> banner (see <a href="#2-dashboard-tab">section 2</a>).</p>
 <h3>Selling from a position</h3>
 <p>The <strong>- Sell</strong> button in the sub-table header opens the sale popup pre-scoped to that position (hidden when nothing remains to sell). See <a href="#5-sales-tabs">section 5</a> for how sales work.</p>
-
-<h3>Live price status indicators</h3>
-
-<table>
-  <thead><tr><th>Color</th><th>Meaning</th></tr></thead>
-  <tbody>
-    <tr><td>🟢 Green</td><td>Price fetched from the market today</td></tr>
-    <tr><td>🟡 Yellow</td><td>A manually entered price, or a fetched price whose date is no longer today</td></tr>
-    <tr><td>🔴 Red</td><td>The last automatic sync failed for this ticker</td></tr>
-    <tr><td>⚪ White</td><td>Never synced (or invalidated after a ticker change)</td></tr>
-  </tbody>
-</table>
-
-<hr>
-
-<h2 id="4-cryptos-tab">4. Cryptos tab</h2>
-
-<p>Works like the Securities tab with the following differences:</p>
-
-<table>
-  <thead><tr><th>Field</th><th>Securities</th><th>Crypto</th></tr></thead>
-  <tbody>
-    <tr><td>Identifier</td><td>Yahoo Ticker (<code>CW8.PA</code>)</td><td>Composite ticker (<code>bitcoin:usd</code>)</td></tr>
-    <tr><td>ISIN</td><td>Yes</td><td>No</td></tr>
-    <tr><td>Broker / Class</td><td>Yes</td><td>No</td></tr>
-    <tr><td>Price source</td><td>Yahoo Finance</td><td>CoinGecko</td></tr>
-    <tr><td><strong>Currency</strong></td><td><strong>Fetched from Yahoo Finance at sync — <code>—</code> before first sync</strong></td><td><strong>Inferred from <code>id:currency</code> format</strong></td></tr>
-  </tbody>
-</table>
-
-<p>Everything else behaves like the Securities tab: <strong>display-only table</strong>, creation/editing through the position and lot <strong>popups</strong>, <strong>mandatory lot dates</strong>, per-lot historical <strong>FX rates</strong> with a <strong>🔄 Sync FX rates</strong> button, per-row <strong>Invested / Valuation / P&amp;L</strong> in the Options currency, remaining-quantity tracking and <strong>negative-stock</strong> detection.</p>
-
-<h3>Ticker entry</h3>
-
-<p>The expected format is <code>id:currency</code> (see <a href="#9-ticker-formats">section 9</a>). It is validated when the position popup is saved: the currency is recalculated from the composite format, and an invalid format is rejected with an error message — nothing is written.</p>
-
-<p>As with CTO, changing the ticker invalidates the live price (sync required).</p>
-
-<hr>
-
-<a id="5-sales-tabs"></a>
-
-<h2>5. Securities Sales / Crypto Sales tabs</h2>
-
-<p>Record of completed disposals (partial or full sales).</p>
-
-<h3>How a sale is created — from the position</h3>
-
-<p>Since V2.0, a sale is created <strong>only</strong> from its position, via the <strong>- Sell</strong> button in the Securities/Cryptos purchase sub-table. That opens the sale popup, where the asset's <strong>identity is fixed</strong> and shown read-only: Name, ISIN, Ticker and Currency are copied from the position — you never retype or re-validate them. You then enter only the <strong>sell side</strong>.</p>
-
-<p>The sale is <strong>decoupled</strong> from the position afterward: it keeps its own copy of the identity, so deleting the original position does not erase the sale (it is then marked <strong>Deleted position</strong>). But its <strong>cost basis stays linked</strong>: as long as the position exists, the cost basis is read back from its purchase lots at display time (see below).</p>
-
-<h3>Fields entered (sell side only)</h3>
-
-<table>
-  <thead><tr><th>Field</th><th>Content</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Sell date</strong></td><td>Date of the sale — <strong>mandatory</strong></td></tr>
-    <tr><td>Qty</td><td>Quantity sold — capped to what was actually held on the sell date (see <em>Temporal quantity cap</em> below)</td></tr>
-    <tr><td>Unit price</td><td>Unit sell price, in native currency</td></tr>
-    <tr><td>Fees</td><td>Brokerage fees on the sale, in native currency</td></tr>
-    <tr><td>FX rate (manual)</td><td><em>(edit only)</em> the sell-date rate, native → Options currency — overrides the synced value</td></tr>
-  </tbody>
-</table>
-
-<h3>Columns displayed</h3>
-
-<table>
-  <thead><tr><th>Column</th><th>Content</th></tr></thead>
-  <tbody>
-    <tr><td>Name / ISIN / Ticker / CCY</td><td>Identity, frozen from the position</td></tr>
-    <tr><td><strong>Avg cost</strong></td><td><strong>Dated cost basis, recomputed live</strong> at every display — the fee-inclusive weighted average cost of the lots dated <strong>on or before the sell date</strong>, already in the Options currency. <code>—</code> if the position was deleted, has no lot on or before that date, or a relevant lot's FX rate is unresolved</td></tr>
-    <tr><td>Sell date / Qty / Unit price / Fees</td><td>The values entered above</td></tr>
-    <tr><td><strong>FX S</strong></td><td>Sell-date rate (native → Options), with ⚪🟢🟡🔴 status indicator</td></tr>
-    <tr><td>Total B</td><td><code>qty × Avg cost</code> — the cost basis of the sold units, in Options currency</td></tr>
-    <tr><td>Total S</td><td><code>(qty × unit price − fees) × FX S</code> — in Options currency</td></tr>
-    <tr><td>P&amp;L</td><td><code>Total S − Total B</code> — in Options currency</td></tr>
-    <tr><td>P&amp;L %</td><td><code>P&amp;L / Total B</code> — in Options currency; shown as <code>—</code> when Total B or FX is unavailable</td></tr>
-  </tbody>
-</table>
-
-<blockquote><p><strong>The cost basis is no longer frozen at the moment of sale.</strong> Earlier versions stored a fixed "buy average cost" on each sale. Since V2.0 the <strong>Avg cost</strong> column is recomputed at every display from the position's current purchase lots — specifically, the average cost of the lots dated on or before the sell date. Add a forgotten earlier lot and the figure corrects itself; there is nothing to re-enter. Because a sale no longer carries its own buy side, there is only <strong>one</strong> FX rate per sale (the sell-date rate). The buy-side conversion now lives on the purchase lots themselves (their per-lot FX rate, <a href="#3-securities-tab">section 3</a>).</p></blockquote>
-
-<h3>Temporal quantity cap</h3>
-
-<p>The quantity you can sell on a given date is capped so that the position's <strong>running stock never goes negative on or after that date</strong>. Selling 5 units on a date when only 3 were held is rejected, even if 10 were bought later — you cannot sell in the past units you only acquired afterward. The message states how many were available at that date. When the sell date is after every buy and sale, this reduces to the plain remaining quantity.</p>
-
-<h3>Currency and identity are read-only</h3>
-
-<p>A sale inherits its currency from its position and never exposes a currency dropdown or an editable ticker — for both Securities and Crypto sales. There is therefore nothing to invalidate on a currency or ticker change at the sale level; the only automatic FX invalidation on a sale is when its <strong>sell date</strong> changes (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</p>
-
-<h3>Sales KPIs</h3>
-
-<p>Four KPIs in the <strong>Options currency</strong>: <strong>Realized P&amp;L</strong>, <strong>Total B</strong>, <strong>Total S</strong> and <strong>P&amp;L %</strong>. They share exactly the same perimeter — only sales whose sell-date FX rate is resolved <strong>and</strong> whose dated cost basis is available. See <a href="#11-historical-fx-rates-frankfurter">section 11</a> for full FX rate management.</p>
-
+<p><a id="archiving-a-position"></a></p>
+<h3>Archiving a position</h3>
+<p>Once a position is entirely sold, it keeps sitting in your list with zeros everywhere. <strong>Archiving</strong> puts it away without destroying it.</p>
+<p><strong>Why not just delete it?</strong> Because its sales survive it. Every sale's cost basis is recomputed from the purchase lots of its position, at the sale's own date — so deleting the position would strip its sales of their Total B and P&amp;L, permanently. Archiving keeps the lots and keeps those figures computable. For the same reason, <strong>a position that carries at least one sale cannot be deleted</strong>: the attempt is refused, with a message telling you how many sales are involved and where to find them.</p>
+<p><strong>When can a position be archived?</strong> When it is fully sold: nothing remaining, and no negative stock at any point in its timeline. A position meeting these conditions carries a <strong>Closed</strong> badge in the Open positions list. The badge is purely informative — nothing prompts you to archive, because a zero balance is a fact while closing a position is an intention only you can have. Selling everything while waiting for a better entry point is a perfectly good reason to leave a position open.</p>
+<p><strong>Archiving is always available as a button</strong>, even on a position that does not qualify: pressing it then explains why it is refused. A greyed-out button would not tell you the rule.</p>
+<p><strong>What archiving changes:</strong></p>
 <ul>
-  <li>Sales missing an FX rate or a cost basis (⚪ status indicator) are excluded from the totals; once an FX sync has been attempted, their count is shown below the KPI in gray.</li>
-  <li>After an FX sync has been attempted, a ⚠️ <strong>No FX rate</strong> KPI appears if at least one sale is still missing a rate, prompting a re-sync.</li>
+<li>The position moves to the <strong>Archived</strong> view, out of the Open positions list</li>
+<li>It is <strong>frozen</strong>: its identity, its purchase lots, and its sales become read-only. Nothing about it can be edited or deleted</li>
+<li>Its price is no longer synced (there is nothing left to value)</li>
+<li>Its sales stay in the Sales view, fully visible and <strong>still counted</strong> in the realized P&amp;L — they carry an <strong>Archived position</strong> badge, and their name remains clickable, taking you to the Archived view</li>
 </ul>
-
-<h3>FX S column</h3>
-
-<p>The FX cell carries a ⚪🟢🟡🔴 status indicator. Manual entry of the sell-date rate is done inside the sale popup, via the <strong>FX rate (manual)</strong> field (available in edit mode) — useful when Frankfurter is unavailable or the broker's exact rate is preferred. See <a href="#11-historical-fx-rates-frankfurter">section 11</a>.</p>
-
-<hr>
-
-<a id="6-history-tab"></a>
-
-<h2>6. History tab</h2>
-
-<p>Manual entry of portfolio valuations as of December 31 each year.</p>
-
-<h3>Columns</h3>
-
+<p><strong>What archiving does not change:</strong> any total, anywhere. Dashboard figures, pie charts, tab KPIs and CSV exports are identical before and after. An archived position is fully sold, so it contributed zero already. Archived rows also stay in the CSV export, so the export never references a position it does not contain.</p>
+<p><strong>Restoring</strong> is a single button in the Archived view, with no conditions attached — a position comes back exactly as it was, immediately editable again. Archiving is a detour, never a dead end.</p>
+<blockquote>
+<p>One operation still reaches archived positions: deleting a broker or an asset class in Options clears that field on them too, exactly as on open positions. That is deliberate — otherwise a restored position could come back pointing at a broker that no longer exists.</p>
+</blockquote>
+<h3>Live price status indicators</h3>
 <table>
-  <thead><tr><th>Column</th><th>Content</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Year</strong></td><td>Fiscal year — sortable via the ↑/↓ button in the column header</td></tr>
-    <tr><td><strong>Currency</strong></td><td>Row entry currency (EUR, USD, CHF, GBP, JPY, HKD, CNY)</td></tr>
-    <tr><td><strong>FX</strong></td><td>Frankfurter rate (row currency → Options currency) at Dec 31 of the row's year — status indicator ⚪🟢🟡🔴 and ✏️ manual edit button</td></tr>
-    <tr><td><strong>Securities</strong></td><td>Securities total as of Dec 31 — entered value, <strong>fixed column</strong>, cannot be removed</td></tr>
-    <tr><td><strong>Cryptos</strong></td><td>Crypto total as of Dec 31 — entered value, <strong>fixed column</strong>, cannot be removed</td></tr>
-    <tr><td><strong>Total</strong></td><td><strong>Computed, read-only:</strong> <code>Securities + Cryptos</code>. Recalculated automatically whenever the Securities or Cryptos value changes</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Color</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🟢 Green</td>
+<td>Price fetched from the market today</td>
+</tr>
+<tr>
+<td>🟡 Yellow</td>
+<td>A manually entered price, or a fetched price whose date is no longer today</td>
+</tr>
+<tr>
+<td>🔴 Red</td>
+<td>The last automatic sync failed for this ticker</td>
+</tr>
+<tr>
+<td>⚪ White</td>
+<td>Never synced (or invalidated after a ticker change)</td>
+</tr>
+</tbody>
 </table>
-
+<hr />
+<p><a id="4-cryptos-tab"></a></p>
+<h2>4. Cryptos tab</h2>
+<p>Works like the Securities tab with the following differences:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Securities</th>
+<th>Crypto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identifier</td>
+<td>Yahoo Ticker (<code>CW8.PA</code>)</td>
+<td>Composite ticker (<code>bitcoin:usd</code>)</td>
+</tr>
+<tr>
+<td>ISIN</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Broker / Class</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Price source</td>
+<td>Yahoo Finance</td>
+<td>CoinGecko</td>
+</tr>
+<tr>
+<td><strong>Currency</strong></td>
+<td><strong>Fetched from Yahoo Finance at sync — <code>—</code> before first sync</strong></td>
+<td><strong>Inferred from <code>id:currency</code> format</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Everything else behaves like the Securities tab: the same <strong>Open positions / Archived / Sales</strong> sub-navigation, the same <strong>tab actions</strong> and four <strong>consolidated KPIs</strong>, a <strong>display-only table</strong>, creation/editing through the position and lot <strong>popups</strong> (lot editing via the row's <strong>✏️</strong>, FX rate included), <strong>mandatory lot dates</strong>, per-lot historical <strong>FX rates</strong> with a <strong>🔄 Sync FX rates</strong> button, per-row <strong>Invested / Valuation / P&amp;L</strong> in the Options currency, remaining-quantity tracking, <strong>negative-stock</strong> detection, and <strong>archiving</strong> with the same rules.</p>
+<h3>Ticker entry</h3>
+<p>The expected format is <code>id:currency</code> (see <a href="#9-ticker-formats">section 9</a>). It is validated when the position popup is saved: the currency is recalculated from the composite format, and an invalid format is rejected with an error message — nothing is written.</p>
+<p>As with CTO, changing the ticker invalidates the live price (sync required).</p>
+<hr />
+<p><a id="5-sales-tabs"></a></p>
+<h2>5. Sales views (Securities and Cryptos)</h2>
+<p>Record of completed disposals (partial or full sales). Each of the Securities and Cryptos tabs holds its own <strong>Sales</strong> view, reachable from the <strong>Open positions / Sales</strong> sub-navigation at the top of the tab.</p>
+<h3>How a sale is created — from the position</h3>
+<p>A sale is created <strong>only</strong> from its position, via the <strong>- Sell</strong> button in the Securities/Cryptos purchase sub-table. That opens the sale popup, where the asset's <strong>identity is fixed</strong> and shown read-only: Name, ISIN, Ticker and Currency are copied from the position — you never retype or re-validate them. You then enter only the <strong>sell side</strong>.</p>
+<p>The sale is <strong>decoupled</strong> from the position afterward: it keeps its own copy of the identity, so deleting the original position does not erase the sale (it is then marked <strong>Deleted position</strong>). But its <strong>cost basis stays linked</strong>: as long as the position exists, the cost basis is read back from its purchase lots at display time (see below).</p>
+<h3>Fields entered (sell side only)</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sell date</strong></td>
+<td>Date of the sale — <strong>mandatory</strong></td>
+</tr>
+<tr>
+<td>Qty</td>
+<td>Quantity sold — capped to what was actually held on the sell date (see <em>Temporal quantity cap</em> below)</td>
+</tr>
+<tr>
+<td>Unit price</td>
+<td>Unit sell price, in native currency</td>
+</tr>
+<tr>
+<td>Fees</td>
+<td>Brokerage fees on the sale, in native currency</td>
+</tr>
+<tr>
+<td>FX rate (manual)</td>
+<td><em>(edit only)</em> the sell-date rate, native → Options currency — overrides the synced value</td>
+</tr>
+</tbody>
+</table>
+<h3>Columns displayed</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name / ISIN / Ticker</td>
+<td><strong>Read from the position</strong>, live — rename a position and its sales follow immediately</td>
+</tr>
+<tr>
+<td>CCY</td>
+<td>The sale's own currency, set when the sale was recorded</td>
+</tr>
+<tr>
+<td><strong>Avg cost</strong></td>
+<td><strong>Dated cost basis, recomputed live</strong> at every display — the fee-inclusive weighted average cost of the lots dated <strong>on or before the sell date</strong>, already in the Options currency. <code>—</code> if the position was deleted, has no lot on or before that date, or a relevant lot's FX rate is unresolved</td>
+</tr>
+<tr>
+<td>Sell date / Qty / Unit price / Fees</td>
+<td>The values entered above</td>
+</tr>
+<tr>
+<td><strong>FX S</strong></td>
+<td>Sell-date rate (native → Options), with ⚪🟢🟡🔴 status indicator</td>
+</tr>
+<tr>
+<td>Total B</td>
+<td><code>qty × Avg cost</code> — the cost basis of the sold units, in Options currency. <code>—</code> when Avg cost is unavailable</td>
+</tr>
+<tr>
+<td>Total S</td>
+<td><code>(qty × unit price − fees) × FX S</code> — in Options currency. <code>—</code> only when <strong>FX S</strong> is missing</td>
+</tr>
+<tr>
+<td>P&amp;L</td>
+<td><code>Total S − Total B</code> — in Options currency. <code>—</code> when either side is unavailable</td>
+</tr>
+<tr>
+<td>P&amp;L %</td>
+<td><code>P&amp;L / Total B</code> — in Options currency; <code>—</code> whenever P&amp;L is <code>—</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Total S does not depend on the position.</strong> The sale proceeds are computed entirely from the sale's own data — quantity, unit price, fees and the sell-date rate. So a sale whose position was deleted still shows its <strong>Total S</strong>; only <strong>Total B</strong>, <strong>P&amp;L</strong> and <strong>P&amp;L %</strong>, which need a cost basis, fall back to <code>—</code>.</p>
+<p><strong>The cost basis is not frozen at the moment of sale.</strong> The <strong>Avg cost</strong> column is recomputed at every display from the position's current purchase lots — specifically, the average cost of the lots dated on or before the sell date. Add a forgotten earlier lot and the figure corrects itself; there is nothing to re-enter. Since a sale carries no buy side of its own, there is only <strong>one</strong> FX rate per sale (the sell-date rate); the buy-side conversion lives on the purchase lots themselves (their per-lot FX rate, <a href="#3-securities-tab">section 3</a>).</p>
+</blockquote>
+<h3>Temporal quantity cap</h3>
+<p>The quantity you can sell on a given date is capped so that the position's <strong>running stock never goes negative on or after that date</strong>. Selling 5 units on a date when only 3 were held is rejected, even if 10 were bought later — you cannot sell in the past units you only acquired afterward. The message states how many were available at that date. When the sell date is after every buy and sale, this reduces to the plain remaining quantity.</p>
+<h3>Currency and identity are read-only</h3>
+<p>A sale inherits its currency from its position and never exposes a currency dropdown or an editable ticker — for both Securities and Crypto sales. There is therefore nothing to invalidate on a currency or ticker change at the sale level; the only automatic FX invalidation on a sale is when its <strong>sell date</strong> changes (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</p>
+<p><strong>Name, ISIN and ticker are read from the position</strong> every time the row or the popup is drawn, rather than copied once when the sale was recorded. Renaming a position therefore updates all of its sales at once — in the table, in the <strong>Edit sale</strong> popup, and in the CSV export — with nothing to re-enter. To change any of them, edit the position itself.</p>
+<p>The one exception is a sale whose position has been <strong>deleted</strong>: there is nothing left to read from, so the sale falls back to the identity stored on it and shows a <strong>Deleted position</strong> badge. This only concerns data recorded before deleting a position with sales became impossible.</p>
+<h3>Sales of an archived position</h3>
+<p>A sale whose position has been archived carries an <strong>Archived position</strong> badge and becomes <strong>read-only</strong>: the ✏️ and 🗑 buttons refuse to act, and say why. The row itself is untouched — it displays in full, and it still counts in the KPIs below.</p>
+<p>The restriction is not cosmetic. A position qualifies for archiving because nothing remains to sell, and that balance is computed from its sales. Editing or deleting one of them would leave the archived position contradicting the very condition that allowed it to be archived. <strong>Restore the position</strong> and everything becomes editable again.</p>
+<p>Unlike the <strong>Deleted position</strong> badge, this one leaves the name <strong>clickable</strong>: the position still exists, and the link takes you straight to it in the Archived view.</p>
+<h3>Sales KPIs</h3>
+<p>Four KPIs in the <strong>Options currency</strong>, in this order: <strong>Total B</strong>, <strong>Total S</strong>, <strong>Realized P&amp;L</strong> and <strong>P&amp;L %</strong> — what was bought, what it sold for, what is left of it, and in what proportion. They share exactly the same perimeter — only sales whose sell-date FX rate is resolved <strong>and</strong> whose dated cost basis is available. See <a href="#11-historical-fx-rates-frankfurter">section 11</a> for full FX rate management.</p>
+<p>Sales attached to an <strong>archived</strong> position are counted normally: archiving preserves the purchase lots, so their cost basis stays computable. Putting a closed position away never lowers your realized P&amp;L.</p>
+<blockquote>
+<p>A sale with no cost basis is therefore counted <strong>nowhere</strong> in these KPIs, even though its <strong>Total S</strong> is displayed on its own row. This is deliberate: the four totals must cover the same set of sales, otherwise a <code>P&amp;L %</code> computed from a <code>Total S</code> and a <code>Total B</code> of different scopes would be meaningless.</p>
+</blockquote>
+<ul>
+<li>Sales missing an FX rate or a cost basis (⚪ status indicator) are excluded from the totals; once an FX sync has been attempted, their count is shown below the KPI in gray.</li>
+<li>After an FX sync has been attempted, a ⚠️ <strong>No FX rate</strong> KPI appears if at least one sale is still missing a rate, prompting a re-sync.</li>
+</ul>
+<h3>FX S column</h3>
+<p>The FX cell carries a ⚪🟢🟡🔴 status indicator. Manual entry of the sell-date rate is done inside the sale popup, via the <strong>FX rate (manual)</strong> field (available in edit mode) — useful when Frankfurter is unavailable or the broker's exact rate is preferred. See <a href="#11-historical-fx-rates-frankfurter">section 11</a>.</p>
+<hr />
+<p><a id="6-history-tab"></a></p>
+<h2>6. History tab</h2>
+<p>Manual entry of portfolio valuations as of December 31 each year.</p>
+<h3>Columns</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Year</strong></td>
+<td>Fiscal year — sortable via the ↑/↓ button in the column header</td>
+</tr>
+<tr>
+<td><strong>Currency</strong></td>
+<td>Row entry currency (EUR, USD, CHF, GBP, JPY, HKD, CNY)</td>
+</tr>
+<tr>
+<td><strong>FX</strong></td>
+<td>Frankfurter rate (row currency → Options currency) at Dec 31 of the row's year — status indicator ⚪🟢🟡🔴 and ✏️ manual edit button</td>
+</tr>
+<tr>
+<td><strong>Securities</strong></td>
+<td>Securities total as of Dec 31 — entered value, <strong>fixed column</strong>, cannot be removed</td>
+</tr>
+<tr>
+<td><strong>Cryptos</strong></td>
+<td>Crypto total as of Dec 31 — entered value, <strong>fixed column</strong>, cannot be removed</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>Computed, read-only:</strong> <code>Securities + Cryptos</code>. Recalculated automatically whenever the Securities or Cryptos value changes</td>
+</tr>
+</tbody>
+</table>
 <h3>FX column</h3>
-
 <p>The <strong>🔄 Sync FX rates</strong> button in the toolbar fetches or refreshes the Dec 31 rate from Frankfurter for all ⚪ or 🔴 rows. This rate is used by the Dashboard to convert each year's total to the Options currency.</p>
-
-<blockquote><p><strong>Current year:</strong> if December 31 of the current year has not yet passed, the Frankfurter API cannot return a rate for that date. A ⚠️ <code>Dec 31 not yet available — using today's rate</code> notice is shown for that row.</p></blockquote>
-
-<p>Status indicators follow the same logic as the Sales screens (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</p>
-
+<div class="warning"><p><strong>Current year:</strong> if December 31 of the current year has not yet passed, the Frankfurter API cannot return a rate for that date. A ⚠️ <code>Dec 31 not yet available — using today's rate</code> notice is shown for that row.</p></div>
+<p>Status indicators follow the same logic as the Sales views (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>).</p>
 <h3>Entry — through a popup</h3>
-
-<p>Since V2.0 the table is <strong>display-only</strong>. <strong>+ Add year</strong> and the row <strong>✏️</strong> button open the year popup (Year, Currency, Securities, Cryptos, and — in edit mode — a <strong>FX rate (manual)</strong> field). Nothing is written until you validate; <strong>Cancel</strong> discards everything. The year is checked on save: it must be a real year, not in the future, and not already present.</p>
-
+<p>The table is <strong>display-only</strong>. <strong>+ Add year</strong> and the row <strong>✏️</strong> button open the year popup (Year, Currency, Securities, Cryptos, and — in edit mode — a <strong>FX rate (manual)</strong> field). Nothing is written until you validate; <strong>Cancel</strong> discards everything. The year is checked on save: it must be a real year, not in the future, and not already present.</p>
 <p>When a row is created, the default currency is the current Options currency, and the default year is the next one after the highest already recorded. Both can be changed.</p>
-
-<p>Only the <strong>Securities</strong> and <strong>Cryptos</strong> amounts are entered, in <strong>each row's own currency</strong>. The <strong>Total</strong> is computed automatically as their sum and is not editable. Manual entry of the FX rate happens inside the popup (the <strong>FX rate (manual)</strong> field), no longer as a separate inline prompt. On the Dashboard, each amount is converted to the Options currency using the row's stored FX rate (the Frankfurter rate at December 31 of the row's year, or the rate at today's date for the current year). A row whose FX rate is missing or invalid is excluded from the Dashboard chart and snapshot table.</p>
-
+<p>Only the <strong>Securities</strong> and <strong>Cryptos</strong> amounts are entered, in <strong>each row's own currency</strong>. The <strong>Total</strong> is computed automatically as their sum and is not editable. Manual entry of the FX rate happens inside the popup, via the <strong>FX rate (manual)</strong> field. On the Dashboard, each amount is converted to the Options currency using the row's stored FX rate (the Frankfurter rate at December 31 of the row's year, or the rate at today's date for the current year). A row whose FX rate is missing or invalid is excluded from the Dashboard chart and snapshot table.</p>
 <p>This data feeds the line chart and annual snapshot table in the Dashboard.</p>
-
-<hr>
-
-<a id="7-options-tab"></a>
-
+<hr />
+<p><a id="7-options-tab"></a></p>
 <h2>7. Options tab</h2>
-
+<blockquote>
+<p><strong>Nothing on this screen takes effect until you click 💾 Save.</strong> Currency, brokers, asset classes and theme are all staged as a working copy: <strong>Cancel</strong> — or simply leaving the tab without saving — restores everything to its last saved state. A confirmation toast is shown on every save.</p>
+</blockquote>
+<h3>Appearance / Theme</h3>
+<p>Three interface themes are available: <strong>Terminal Pro</strong>, <strong>Private Bank</strong> and <strong>Bold Modern</strong> (the default). Selecting one highlights it, but the interface only switches over when you click <strong>💾 Save</strong>.</p>
+<p>The theme is a <strong>browser preference</strong>, not portfolio data: it is stored locally in the browser and is not part of <code>portfolio_data.json</code>. It therefore does not travel with a JSON export, and it is set per browser rather than per portfolio.</p>
 <h3>Reporting currency</h3>
 <p>Select EUR, USD, CHF, GBP, JPY, HKD or CNY then click <strong>💾 Save</strong> to apply.</p>
-
 <p><strong>Exact scope of the currency change:</strong></p>
-
 <table>
-  <thead><tr><th>Screen / KPI</th><th>Currency used</th></tr></thead>
-  <tbody>
-    <tr><td>Dashboard — Total valuation</td><td><strong>Options currency</strong> (consolidation)</td></tr>
-    <tr><td>Dashboard — Pie charts</td><td><strong>Options currency</strong> (converted at today's rate)</td></tr>
-    <tr><td>Dashboard — Annual trend chart + snapshot table</td><td><strong>Options currency</strong> (converted from each history row's currency)</td></tr>
-    <tr><td>Securities tab — KPIs (Invested, Valuation, P&amp;L)</td><td><strong>Options currency</strong> (consolidated over open Securities positions)</td></tr>
-    <tr><td>Cryptos tab — KPIs (Invested, Valuation, P&amp;L)</td><td><strong>Options currency</strong> (consolidated over open Crypto positions)</td></tr>
-    <tr><td>Individual CTO and Crypto rows</td><td>Native currency (never converted)</td></tr>
-    <tr><td>Sales tabs — P&amp;L KPIs</td><td><strong>Options currency</strong> (via fixed FX rates — see <a href="#11-historical-fx-rates-frankfurter">section 11</a>)</td></tr>
-    <tr><td>Individual Sales rows — Total S / Total B / P&amp;L</td><td><strong>Options currency</strong> (via fixed FX rates)</td></tr>
-    <tr><td>Individual Sales rows — Unit price / Avg cost / Fees</td><td>Native currency of the sale</td></tr>
-    <tr><td>History entry</td><td>Independent (each row has its own currency)</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Screen / KPI</th>
+<th>Currency used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dashboard — Total valuation</td>
+<td><strong>Options currency</strong> (consolidation)</td>
+</tr>
+<tr>
+<td>Dashboard — Pie charts</td>
+<td><strong>Options currency</strong> (converted at today's rate)</td>
+</tr>
+<tr>
+<td>Dashboard — Annual trend chart + snapshot table</td>
+<td><strong>Options currency</strong> (converted from each history row's currency)</td>
+</tr>
+<tr>
+<td>Securities tab — KPIs (Invested, Valuation, P&amp;L)</td>
+<td><strong>Options currency</strong> (consolidated over open Securities positions)</td>
+</tr>
+<tr>
+<td>Cryptos tab — KPIs (Invested, Valuation, P&amp;L)</td>
+<td><strong>Options currency</strong> (consolidated over open Crypto positions)</td>
+</tr>
+<tr>
+<td>Individual CTO and Crypto rows — Invested / Valuation / P&amp;L / Weight</td>
+<td><strong>Options currency</strong> (invested at each lot's historical rate, valuation at today's rate)</td>
+</tr>
+<tr>
+<td>Individual CTO and Crypto rows — Avg cost / Live price</td>
+<td>Native currency (never converted)</td>
+</tr>
+<tr>
+<td>Sales views — P&amp;L KPIs</td>
+<td><strong>Options currency</strong> (via fixed FX rates — see <a href="#11-historical-fx-rates-frankfurter">section 11</a>)</td>
+</tr>
+<tr>
+<td>Individual Sales rows — Total S / Total B / P&amp;L</td>
+<td><strong>Options currency</strong> (via fixed FX rates)</td>
+</tr>
+<tr>
+<td>Individual Sales rows — Unit price / Avg cost / Fees</td>
+<td>Native currency of the sale</td>
+</tr>
+<tr>
+<td>History entry</td>
+<td>Independent (each row has its own currency)</td>
+</tr>
+</tbody>
 </table>
-
 <p><strong>Changing the Options currency</strong> updates all consolidated displays (Dashboard, top banners, Sales KPIs). It also invalidates the <strong>fixed FX rates</strong> for all sales (Securities Sales and Crypto Sales): a warning toast is displayed and rates switch to 🔴 (see <a href="#11-historical-fx-rates-frankfurter">section 11</a>). 🟡 (manual) rates are also invalidated (they encoded a rate toward the previous Options currency and would produce incorrect results if kept). Outside of sales, it invalidates no positions, triggers no live price re-sync, and pre-fills no fields.</p>
-
 <h3>Brokers and asset classes</h3>
 <p>Configurable lists. Brokers and asset classes can be <strong>added</strong> and <strong>deleted</strong>; renaming is not available (an entry is removed and, if needed, re-created under a new name). Each list holds at most <strong>10 entries</strong>, and each name is limited to <strong>15 characters</strong>.</p>
-
-<p>Deleting an entry that is referenced by one or more open Securities positions is <strong>not blocked</strong>: a confirmation dialog reports how many positions use it and warns that the corresponding field will be cleared in those positions. On confirmation, the entry is removed and the field is emptied. Only open Securities positions are checked — sales and History rows are not.</p>
-
-<p>Broker and asset-class additions and deletions are saved immediately. By contrast, a change to the reporting currency takes effect only after clicking <strong>💾 Save</strong>.</p>
-
+<p>Deleting an entry that is referenced by one or more Securities positions is <strong>not blocked</strong>: a confirmation dialog reports how many positions use it and warns that the corresponding field will be cleared in those positions. Only Securities positions are concerned — sales and History rows are not.</p>
+<p><strong>Archived positions are counted and cleared like any other</strong>, even though they are otherwise frozen. This is the one write that reaches them, and it is deliberate: leaving an archived position pointing at a deleted broker would only surface later, when restoring it.</p>
+<p>That confirmation appears immediately, so you know the impact before going further — but <strong>the positions are only actually cleared when you click 💾 Save</strong>. Cancel at that point and both the list and the positions are left untouched.</p>
 <h3>Export / Import JSON</h3>
 <ul>
-  <li><strong>Export</strong>: downloads <code>portfolio_data.json</code> — useful for backup or migration.</li>
-  <li><strong>Import</strong>: loads an existing JSON file and overwrites the current data.</li>
+<li><strong>Export</strong>: downloads <code>portfolio_data.json</code> — useful for backup or migration.</li>
+<li><strong>Import</strong>: loads an existing JSON file and overwrites the current data.</li>
 </ul>
-
 <h3>Export CSV (ZIP)</h3>
-<p>Clicking <strong>Export</strong> generates an <code>export_YYYYMMDD.zip</code> file containing 6 timestamped CSV files. See <a href="#15-csv-export">section 15</a> for full details.</p>
-
-<hr>
-
-<a id="8-currencies--complete-guide"></a>
-
+<p>Clicking <strong>Export</strong> generates an <code>export_YYYYMMDD.zip</code> file containing
+6 timestamped CSV files. See <a href="#15-csv-export">section 15</a> for full details.</p>
+<hr />
+<p><a id="8-currencies--complete-guide"></a></p>
 <h2>8. Currencies — complete guide</h2>
-
 <p>This is the most important concept to understand when using the tracker.</p>
-
 <h3>Core principle</h3>
-
 <p>Seven currencies are supported: <strong>EUR, USD, CHF, GBP (£), JPY (¥), HKD (HK$) and CNY (CN¥)</strong>.</p>
-
-<blockquote><p><strong>Note on JPY:</strong> Japanese yen amounts are displayed without decimal places (e.g. ¥7,203, not ¥7,203.00), consistent with standard JPY notation.</p></blockquote>
-
-<table>
-  <thead><tr><th>Amount type</th><th>Currency</th><th>Conversion</th></tr></thead>
-  <tbody>
-    <tr><td>Purchase price, Avg cost (WAC), Live price</td><td>Native currency (= position currency)</td><td>Never converted</td></tr>
-    <tr><td>Purchase-lot detail (price, fees, lot total)</td><td>Native currency</td><td>Never converted</td></tr>
-    <tr><td>Per-row Invested (Securities/Crypto)</td><td>Options currency</td><td>Converted <strong>per lot at each lot's historical rate</strong></td></tr>
-    <tr><td>Per-row Valuation, P&amp;L, Weight (Securities/Crypto)</td><td>Options currency</td><td>Valuation at today's rate; invested side at historical rates</td></tr>
-    <tr><td>Values entered in History</td><td>Each row's native currency</td><td>Never converted at entry</td></tr>
-    <tr><td>KPI totals (Dashboard, Securities/Crypto tab banners)</td><td>Options currency</td><td>Valuation at today's rate, invested at historical lot rates</td></tr>
-    <tr><td>Annual trend chart + snapshot table (Dashboard)</td><td>Options currency</td><td>Converted using each row's stored FX rate (Frankfurter at Dec 31, or today's rate for the current year)</td></tr>
-    <tr><td><strong>Total S (Sales)</strong></td><td><strong>Options currency</strong></td><td><strong>At the sell-date FX rate</strong></td></tr>
-    <tr><td><strong>Total B / Realized P&amp;L (Sales)</strong></td><td><strong>Options currency</strong></td><td><strong>Cost basis at the buy lots' historical rates, sale proceeds at the sell-date rate</strong></td></tr>
-  </tbody>
-</table>
-
-<blockquote><p><strong>How the invested amount is converted.</strong><br>
-Converting a historical purchase at <em>today's</em> exchange rate would be inaccurate — the EUR/USD rate in January 2023 is not the one in 2026. Since V2.0 the tracker instead converts each purchase lot at the rate that applied <strong>on its own date</strong> (the lot's historical FX rate). Valuation, being about the value <em>now</em>, is converted at today's rate. This is the same rate-matching a broker uses.</p></blockquote>
-
-<h3>Currency sources by context</h3>
-
-<p>The currency of an instrument depends on its type and screen:</p>
-
-<table>
-  <thead><tr><th>Context</th><th>Currency source</th></tr></thead>
-  <tbody>
-    <tr><td><strong>CTO position</strong> (Securities tab)</td><td>Read from Yahoo Finance (<code>fast_info.currency</code>) at each price sync — <code>—</code> before first sync</td></tr>
-    <tr><td><strong>Crypto position</strong> (Cryptos tab)</td><td>Inferred from the composite ticker format <code>id:currency</code> (e.g. <code>bitcoin:usd</code> → USD)</td></tr>
-    <tr><td><strong>CTO Sale</strong> (Securities Sales tab)</td><td>Inherited from the position of origin at creation — read-only on the sale</td></tr>
-    <tr><td><strong>Crypto Sale</strong> (Crypto Sales tab)</td><td>Inherited from the position of origin at creation — read-only on the sale</td></tr>
-  </tbody>
-</table>
-
-<blockquote><p><strong>Why does the CTO currency come from Yahoo Finance, not the ticker suffix?</strong><br>
-A ticker suffix identifies a trading venue, not a currency. The same suffix can cover instruments listed in different currencies on the same exchange. For example, the London Stock Exchange (<code>.L</code>) lists securities in GBP, GBp (pence = GBP/100) and USD. Only Yahoo Finance can authoritatively report the actual trading currency of an instrument. The tracker reads and stores it at each sync.</p></blockquote>
-
-<h3>Impact of changing a CTO ticker</h3>
-
-<p>When the ticker of a CTO position is changed:</p>
-
-<ul>
-  <li><strong>The live price is invalidated</strong> (livePrice → null, ⚪ status indicator). A re-sync is needed.</li>
-  <li><strong>The currency is not recalculated</strong> from the new ticker — it retains its current value until the next sync, at which point Yahoo Finance will set it to the correct currency for the new ticker.</li>
-  <li>Stored purchases (<code>purchases[]</code>) remain unchanged.</li>
-</ul>
-
-<h3>Impact of changing a Crypto ticker</h3>
-
-<p>When the ticker of a Crypto <strong>position</strong> is changed (a sale has no editable ticker):</p>
-
-<ul>
-  <li>The currency is immediately recalculated from the new composite ticker.</li>
-  <li>If the new ticker is valid, <strong>the live price is invalidated</strong> (livePrice → null, ⚪ status indicator). A re-sync is needed.</li>
-  <li>Stored purchases (<code>purchases[]</code>) remain unchanged but are <strong>reinterpreted in the new currency</strong>. For example, a purchase of 15,000 entered when the position was in USD will then display as 15,000 EUR if the ticker is switched to <code>bitcoin:eur</code>. Their per-lot FX rates, which target a specific currency pair, are invalidated and need re-syncing.</li>
-</ul>
-
-<h3>Exchange rates</h3>
-
-<p>The tracker uses <strong>two distinct FX rate sources</strong> depending on the use case:</p>
-
-<p><strong>Daily rates</strong> — fetched from Yahoo Finance at each synchronization (🔄 button):</p>
-<ul>
-  <li><code>EURUSD=X</code> : EUR/USD rate</li>
-  <li><code>EURCHF=X</code> : EUR/CHF rate</li>
-  <li><code>USDCHF=X</code> : USD/CHF rate</li>
-  <li><code>EURGBP=X</code> : EUR/GBP rate</li>
-  <li><code>EURJPY=X</code> : EUR/JPY rate</li>
-  <li><code>EURHKD=X</code> : EUR/HKD rate</li>
-  <li><code>EURCNY=X</code> : EUR/CNY rate</li>
-</ul>
-
-<p>Stored in <code>portfolio_data.json</code> under the <code>fxRates</code> key, used for Dashboard consolidations and CTO/Crypto top banners.</p>
-
-<p><strong>Historical rates</strong> — fetched from the Frankfurter API (ECB), fixed at a specific date. Used for purchase-lot conversion (Invested), realized P&amp;L in the Sales screens, and the History tab's annual totals. See <a href="#11-historical-fx-rates-frankfurter">section 11</a> for full details.</p>
-
-<hr>
-
-<a id="9-ticker-formats"></a>
-
-<h2>9. Ticker formats</h2>
-
-<p>This section describes the exact expected format for each ticker type. It is the authoritative reference for input validation.</p>
-
-<a id="ticker-cto"></a>
-
-<h3>Ticker CTO</h3>
-
-<p>Format: <strong>native Yahoo Finance ticker</strong> (e.g. <code>AAPL</code>, <code>CW8.PA</code>, <code>NESN.SW</code>).</p>
-
-<p>The suffix identifies the trading venue (exchange). Tickers with unrecognized suffixes are rejected at entry. The actual currency of the instrument is determined by Yahoo Finance at the first price sync, not by the suffix.</p>
-
-<table>
-  <thead><tr><th>Suffix</th><th>Exchange</th><th>Typical currency</th></tr></thead>
-  <tbody>
-    <tr><td>(no suffix)</td><td>NYSE / NASDAQ (US)</td><td>USD</td></tr>
-    <tr><td><code>.PA</code> <code>.AS</code> <code>.DE</code> <code>.F</code> <code>.MI</code> <code>.BR</code> <code>.LS</code> <code>.MC</code></td><td>Euronext / Xetra</td><td>EUR</td></tr>
-    <tr><td><code>.SW</code> <code>.VX</code></td><td>SIX Swiss Exchange</td><td>CHF</td></tr>
-    <tr><td><code>.L</code></td><td>London Stock Exchange</td><td>GBP / GBp / USD (varies by instrument)</td></tr>
-    <tr><td><code>.T</code></td><td>Tokyo Stock Exchange</td><td>JPY</td></tr>
-    <tr><td><code>.HK</code></td><td>Hong Kong Stock Exchange</td><td>HKD</td></tr>
-    <tr><td><code>.SS</code> <code>.SZ</code></td><td>Shanghai / Shenzhen Stock Exchange</td><td>CNY</td></tr>
-    <tr><td>Any other suffix</td><td><strong>Rejected at entry</strong></td><td>—</td></tr>
-  </tbody>
-</table>
-
-<blockquote><p>The "Typical currency" column is indicative only. The actual trading currency is always confirmed at sync from Yahoo Finance. In particular, <code>.L</code> instruments may trade in GBP, GBp (pence = GBP/100, converted automatically), or USD.</p></blockquote>
-
-<a id="ticker-crypto"></a>
-
-<h3>Ticker Crypto</h3>
-
-<p>Format: <strong><code>id:currency</code></strong> (e.g. <code>bitcoin:usd</code>, <code>ethereum:eur</code>, <code>solana:chf</code>).</p>
-
-<table>
-  <thead><tr><th>Part</th><th>Rule</th></tr></thead>
-  <tbody>
-    <tr><td><code>id</code> (before the <code>:</code>)</td><td>CoinGecko identifier, lowercase. Must not be empty.</td></tr>
-    <tr><td><code>:</code></td><td>Required separator. Must appear exactly once in the ticker (e.g. bitcoin:usd — one colon, no more).</td></tr>
-    <tr><td><code>currency</code> (after the <code>:</code>)</td><td><code>eur</code>, <code>usd</code>, <code>chf</code>, <code>gbp</code>, <code>jpy</code>, <code>hkd</code> or <code>cny</code>. Case-insensitive at entry (normalized to lowercase). JPY amounts are displayed without decimal places.</td></tr>
-  </tbody>
-</table>
-
-<blockquote><p><strong>Important:</strong> the <code>id</code> is the CoinGecko identifier, <strong>not the symbol</strong>:</p>
-<ul>
-  <li>✅ <code>bitcoin:usd</code>, <code>ethereum:eur</code>, <code>solana:chf</code>, <code>cardano:gbp</code>, <code>bitcoin:jpy</code>, <code>ethereum:hkd</code>, <code>solana:cny</code></li>
-  <li>❌ <code>BTC:USD</code>, <code>ETH:EUR</code>, <code>SOL:USD</code> (symbols are not recognized by the CoinGecko API)</li>
-</ul>
+<blockquote>
+<p><strong>Note on JPY:</strong> Japanese yen amounts are displayed without decimal places (e.g. ¥7,203, not ¥7,203.00), consistent with standard JPY notation.</p>
 </blockquote>
-
-<p><strong>Where to find the CoinGecko <code>id</code>?</strong><br>
+<table>
+<thead>
+<tr>
+<th>Amount type</th>
+<th>Currency</th>
+<th>Conversion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Purchase price, Avg cost (WAC), Live price</td>
+<td>Native currency (= position currency)</td>
+<td>Never converted</td>
+</tr>
+<tr>
+<td>Purchase-lot detail (price, fees, lot total)</td>
+<td>Native currency</td>
+<td>Never converted</td>
+</tr>
+<tr>
+<td>Per-row Invested (Securities/Crypto)</td>
+<td>Options currency</td>
+<td>Converted <strong>per lot at each lot's historical rate</strong></td>
+</tr>
+<tr>
+<td>Per-row Valuation, P&amp;L, Weight (Securities/Crypto)</td>
+<td>Options currency</td>
+<td>Valuation at today's rate; invested side at historical rates</td>
+</tr>
+<tr>
+<td>Values entered in History</td>
+<td>Each row's native currency</td>
+<td>Never converted at entry</td>
+</tr>
+<tr>
+<td>KPI totals (Dashboard, Securities/Crypto tab banners)</td>
+<td>Options currency</td>
+<td>Valuation at today's rate, invested at historical lot rates</td>
+</tr>
+<tr>
+<td>Annual trend chart + snapshot table (Dashboard)</td>
+<td>Options currency</td>
+<td>Converted using each row's stored FX rate (Frankfurter at Dec 31, or today's rate for the current year)</td>
+</tr>
+<tr>
+<td><strong>Total S (Sales)</strong></td>
+<td><strong>Options currency</strong></td>
+<td><strong>At the sell-date FX rate</strong></td>
+</tr>
+<tr>
+<td><strong>Total B / Realized P&amp;L (Sales)</strong></td>
+<td><strong>Options currency</strong></td>
+<td><strong>Cost basis at the buy lots' historical rates, sale proceeds at the sell-date rate</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>How the invested amount is converted.</strong>
+Converting a historical purchase at <em>today's</em> exchange rate would be inaccurate — the EUR/USD rate in January 2023 is not the one in 2026. The tracker converts each purchase lot at the rate that applied <strong>on its own date</strong> (the lot's historical FX rate). Valuation, being about the value <em>now</em>, is converted at today's rate. This is the same rate-matching a broker uses.</p>
+</blockquote>
+<h3>Currency sources by context</h3>
+<p>The currency of an instrument depends on its type and screen:</p>
+<table>
+<thead>
+<tr>
+<th>Context</th>
+<th>Currency source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CTO position</strong> (Securities tab)</td>
+<td>Read from Yahoo Finance (<code>fast_info.currency</code>) at each price sync — <code>—</code> before first sync</td>
+</tr>
+<tr>
+<td><strong>Crypto position</strong> (Cryptos tab)</td>
+<td>Inferred from the composite ticker format <code>id:currency</code> (e.g. <code>bitcoin:usd</code> → USD)</td>
+</tr>
+<tr>
+<td><strong>CTO Sale</strong> (Securities Sales view)</td>
+<td>Inherited from the position of origin at creation — read-only on the sale</td>
+</tr>
+<tr>
+<td><strong>Crypto Sale</strong> (Crypto Sales view)</td>
+<td>Inherited from the position of origin at creation — read-only on the sale</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Why does the CTO currency come from Yahoo Finance, not the ticker suffix?</strong>
+A ticker suffix identifies a trading venue, not a currency. The same suffix can cover instruments listed in different currencies on the same exchange. For example, the London Stock Exchange (<code>.L</code>) lists securities in GBP, GBp (pence = GBP/100) and USD. Only Yahoo Finance can authoritatively report the actual trading currency of an instrument. The tracker reads and stores it at each sync.</p>
+</blockquote>
+<h3>Impact of changing a CTO ticker</h3>
+<p>When the ticker of a CTO position is changed:</p>
+<ul>
+<li><strong>The live price is invalidated</strong> (livePrice → null, ⚪ status indicator). A re-sync is needed.</li>
+<li><strong>The currency is not recalculated</strong> from the new ticker — it retains its current value until the next sync, at which point Yahoo Finance will set it to the correct currency for the new ticker.</li>
+<li>Stored purchases (<code>purchases[]</code>) remain unchanged.</li>
+</ul>
+<h3>Impact of changing a Crypto ticker</h3>
+<p>When the ticker of a Crypto <strong>position</strong> is changed (a sale has no editable ticker):</p>
+<ul>
+<li>The currency is immediately recalculated from the new composite ticker.</li>
+<li>If the new ticker is valid, <strong>the live price is invalidated</strong> (livePrice → null, ⚪ status indicator). A re-sync is needed.</li>
+<li>Stored purchases (<code>purchases[]</code>) remain unchanged but are <strong>reinterpreted in the new currency</strong>. For example, a purchase of 15,000 entered when the position was in USD will then display as 15,000 EUR if the ticker is switched to <code>bitcoin:eur</code>. Their per-lot FX rates, which target a specific currency pair, are invalidated and need re-syncing.</li>
+</ul>
+<h3>Exchange rates</h3>
+<p>The tracker uses <strong>two distinct FX rate sources</strong> depending on the use case:</p>
+<p><strong>Daily rates</strong> — fetched from Yahoo Finance at each synchronization (🔄 button):
+- <code>EURUSD=X</code> : EUR/USD rate
+- <code>EURCHF=X</code> : EUR/CHF rate
+- <code>USDCHF=X</code> : USD/CHF rate
+- <code>EURGBP=X</code> : EUR/GBP rate
+- <code>EURJPY=X</code> : EUR/JPY rate
+- <code>EURHKD=X</code> : EUR/HKD rate
+- <code>EURCNY=X</code> : EUR/CNY rate</p>
+<p>Stored in <code>portfolio_data.json</code> under the <code>fxRates</code> key, used for Dashboard consolidations and CTO/Crypto top banners.</p>
+<p><strong>Historical rates</strong> — fetched from the Frankfurter API (ECB), fixed at a specific date. Used for purchase-lot conversion (Invested), realized P&amp;L in the Sales views, and the History tab's annual totals. See <a href="#11-historical-fx-rates-frankfurter">section 11</a> for full details.</p>
+<hr />
+<p><a id="9-ticker-formats"></a></p>
+<h2>9. Ticker formats</h2>
+<p>This section describes the exact expected format for each ticker type. It is the authoritative reference for input validation.</p>
+<p><a id="ticker-cto"></a></p>
+<h3>Ticker CTO</h3>
+<p>Format: <strong>native Yahoo Finance ticker</strong> (e.g. <code>AAPL</code>, <code>CW8.PA</code>, <code>NESN.SW</code>).</p>
+<p>The suffix identifies the trading venue (exchange). Tickers with unrecognized suffixes are rejected at entry. The actual currency of the instrument is determined by Yahoo Finance at the first price sync, not by the suffix.</p>
+<table>
+<thead>
+<tr>
+<th>Suffix</th>
+<th>Exchange</th>
+<th>Typical currency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(no suffix)</td>
+<td>NYSE / NASDAQ (US)</td>
+<td>USD</td>
+</tr>
+<tr>
+<td><code>.PA</code> <code>.AS</code> <code>.DE</code> <code>.F</code> <code>.MI</code> <code>.BR</code> <code>.LS</code> <code>.MC</code></td>
+<td>Euronext / Xetra</td>
+<td>EUR</td>
+</tr>
+<tr>
+<td><code>.SW</code> <code>.VX</code></td>
+<td>SIX Swiss Exchange</td>
+<td>CHF</td>
+</tr>
+<tr>
+<td><code>.L</code></td>
+<td>London Stock Exchange</td>
+<td>GBP / GBp / USD (varies by instrument)</td>
+</tr>
+<tr>
+<td><code>.T</code></td>
+<td>Tokyo Stock Exchange</td>
+<td>JPY</td>
+</tr>
+<tr>
+<td><code>.HK</code></td>
+<td>Hong Kong Stock Exchange</td>
+<td>HKD</td>
+</tr>
+<tr>
+<td><code>.SS</code> <code>.SZ</code></td>
+<td>Shanghai / Shenzhen Stock Exchange</td>
+<td>CNY</td>
+</tr>
+<tr>
+<td>Any other suffix</td>
+<td><strong>Rejected at entry</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The "Typical currency" column is indicative only. The actual trading currency is always confirmed at sync from Yahoo Finance. In particular, <code>.L</code> instruments may trade in GBP, GBp (pence = GBP/100, converted automatically), or USD.</p>
+</blockquote>
+<p><a id="ticker-crypto"></a></p>
+<h3>Ticker Crypto</h3>
+<p>Format: <strong><code>id:currency</code></strong> (e.g. <code>bitcoin:usd</code>, <code>ethereum:eur</code>, <code>solana:chf</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code> (before the <code>:</code>)</td>
+<td>CoinGecko identifier, lowercase. Must not be empty.</td>
+</tr>
+<tr>
+<td><code>:</code></td>
+<td>Required separator. Must appear exactly once in the ticker (e.g. bitcoin:usd — one colon, no more).</td>
+</tr>
+<tr>
+<td><code>currency</code> (after the <code>:</code>)</td>
+<td><code>eur</code>, <code>usd</code>, <code>chf</code>, <code>gbp</code>, <code>jpy</code>, <code>hkd</code> or <code>cny</code>. Case-insensitive at entry (normalized to lowercase). JPY amounts are displayed without decimal places.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Important:</strong> the <code>id</code> is the CoinGecko identifier, <strong>not the symbol</strong>:
+- ✅ <code>bitcoin:usd</code>, <code>ethereum:eur</code>, <code>solana:chf</code>, <code>cardano:gbp</code>, <code>bitcoin:jpy</code>, <code>ethereum:hkd</code>, <code>solana:cny</code>
+- ❌ <code>BTC:USD</code>, <code>ETH:EUR</code>, <code>SOL:USD</code> (symbols are not recognized by the CoinGecko API)</p>
+</blockquote>
+<p><strong>Where to find the CoinGecko <code>id</code>?</strong>
 On coingecko.com, the <code>id</code> appears in the URL of the coin's page. For example, <code>coingecko.com/en/coins/bitcoin</code> → the <code>id</code> is <code>bitcoin</code>. The symbol <code>BTC</code> displayed next to the name is different and does not work with the API.</p>
-
 <h3>Entry and rejection</h3>
-
-<p><strong>CTO tickers (live screens and Securities Sales):</strong></p>
-<ul>
-  <li>If the ticker is empty → accepted, currency and live price reset to <code>—</code>.</li>
-  <li>If the ticker is valid (known suffix or no suffix) → accepted, <strong>live price invalidated</strong> on live screens. Currency unchanged — will be updated at next sync.</li>
-  <li>If the ticker is invalid (unrecognized suffix) → <strong>rejected</strong>, an error toast at the bottom of the screen lists the expected suffixes, and the previous value is restored.</li>
-</ul>
-
-<p><strong>Crypto tickers (live screens and Crypto Sales):</strong></p>
-<ul>
-  <li>If the ticker is empty → accepted, currency reset to <code>—</code>.</li>
-  <li>If the ticker is valid → accepted, currency recomputed from the composite format, <strong>live price invalidated</strong> on live screens.</li>
-  <li>If the ticker is invalid → <strong>rejected</strong>, an error toast lists the expected format, and the previous value is restored.</li>
-</ul>
-
-<hr>
-
-<a id="10-yahoo-finance-api"></a>
-
+<p><strong>CTO tickers (live screens and Securities Sales):</strong>
+- If the ticker is empty → accepted, currency and live price reset to <code>—</code>.
+- If the ticker is valid (known suffix or no suffix) → accepted, <strong>live price invalidated</strong> on live screens. Currency unchanged — will be updated at next sync.
+- If the ticker is invalid (unrecognized suffix) → <strong>rejected</strong>, an error toast at the bottom of the screen lists the expected suffixes, and the previous value is restored.</p>
+<p><strong>Crypto tickers (live screens and Crypto Sales):</strong>
+- If the ticker is empty → accepted, currency reset to <code>—</code>.
+- If the ticker is valid → accepted, currency recomputed from the composite format, <strong>live price invalidated</strong> on live screens.
+- If the ticker is invalid → <strong>rejected</strong>, an error toast lists the expected format, and the previous value is restored.</p>
+<hr />
+<p><a id="10-yahoo-finance-api"></a></p>
 <h2>10. Yahoo Finance API</h2>
-
 <p>This section covers everything related to Yahoo Finance: the Python library, ticker formats, live price states, and troubleshooting.</p>
-
 <h3>Library and installation</h3>
-
 <p>The tracker uses the Python <strong>yfinance</strong> library to fetch CTO prices.</p>
-
-<pre><code>pip install yfinance --break-system-packages</code></pre>
-
+<pre><code class="language-bash">pip install yfinance --break-system-packages
+</code></pre>
 <p>yfinance queries Yahoo Finance, a free source requiring no API key. Prices are fetched only when the sync button is clicked — never automatically.</p>
-
 <p>Without <code>yfinance</code>, the tracker falls back to a direct Yahoo Finance API call (less reliable).</p>
-
 <h3>Yahoo Finance ticker formats</h3>
-
 <p>Tickers follow Yahoo Finance naming conventions. The suffix identifies the trading exchange. The position's actual currency is read from Yahoo Finance at each sync (see below).</p>
-
 <table>
-  <thead><tr><th>Suffix</th><th>Exchange</th></tr></thead>
-  <tbody>
-    <tr><td>(none)</td><td>NYSE / NASDAQ (US)</td></tr>
-    <tr><td><code>.PA</code></td><td>Euronext Paris</td></tr>
-    <tr><td><code>.AS</code></td><td>Euronext Amsterdam</td></tr>
-    <tr><td><code>.DE</code> or <code>.F</code></td><td>Xetra / Frankfurt</td></tr>
-    <tr><td><code>.MI</code></td><td>Borsa Italiana</td></tr>
-    <tr><td><code>.BR</code></td><td>Euronext Brussels</td></tr>
-    <tr><td><code>.LS</code></td><td>Euronext Lisbon</td></tr>
-    <tr><td><code>.MC</code></td><td>Bolsa de Madrid</td></tr>
-    <tr><td><code>.SW</code> or <code>.VX</code></td><td>SIX Swiss Exchange</td></tr>
-    <tr><td><code>.L</code></td><td>London Stock Exchange</td></tr>
-    <tr><td><code>.T</code></td><td>Tokyo Stock Exchange</td></tr>
-    <tr><td><code>.HK</code></td><td>Hong Kong Stock Exchange</td></tr>
-    <tr><td><code>.SS</code></td><td>Shanghai Stock Exchange</td></tr>
-    <tr><td><code>.SZ</code></td><td>Shenzhen Stock Exchange</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Suffix</th>
+<th>Exchange</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(none)</td>
+<td>NYSE / NASDAQ (US)</td>
+</tr>
+<tr>
+<td><code>.PA</code></td>
+<td>Euronext Paris</td>
+</tr>
+<tr>
+<td><code>.AS</code></td>
+<td>Euronext Amsterdam</td>
+</tr>
+<tr>
+<td><code>.DE</code> or <code>.F</code></td>
+<td>Xetra / Frankfurt</td>
+</tr>
+<tr>
+<td><code>.MI</code></td>
+<td>Borsa Italiana</td>
+</tr>
+<tr>
+<td><code>.BR</code></td>
+<td>Euronext Brussels</td>
+</tr>
+<tr>
+<td><code>.LS</code></td>
+<td>Euronext Lisbon</td>
+</tr>
+<tr>
+<td><code>.MC</code></td>
+<td>Bolsa de Madrid</td>
+</tr>
+<tr>
+<td><code>.SW</code> or <code>.VX</code></td>
+<td>SIX Swiss Exchange</td>
+</tr>
+<tr>
+<td><code>.L</code></td>
+<td>London Stock Exchange</td>
+</tr>
+<tr>
+<td><code>.T</code></td>
+<td>Tokyo Stock Exchange</td>
+</tr>
+<tr>
+<td><code>.HK</code></td>
+<td>Hong Kong Stock Exchange</td>
+</tr>
+<tr>
+<td><code>.SS</code></td>
+<td>Shanghai Stock Exchange</td>
+</tr>
+<tr>
+<td><code>.SZ</code></td>
+<td>Shenzhen Stock Exchange</td>
+</tr>
+</tbody>
 </table>
-
 <p>Examples: <code>AAPL</code> (Apple), <code>CW8.PA</code> (MSCI World ETF, Euronext Paris), <code>NESN.SW</code> (Nestlé, SIX), <code>SHEL.L</code> (Shell, LSE), <code>7203.T</code> (Toyota, Tokyo), <code>0700.HK</code> (Tencent, HK), <code>600519.SS</code> (Moutai, Shanghai).</p>
-
 <p>Tickers with unrecognized suffixes are rejected at entry — the tracker displays an error and reverts to the previous value (see <a href="#9-ticker-formats">section 9</a> for the full list and validation rules).</p>
-
 <h3>Currency reading at sync</h3>
-
 <p>At each price synchronization, the tracker reads the actual trading currency from Yahoo Finance (<code>fast_info.currency</code>) and stores it on the position. This is the authoritative currency source for CTO positions.</p>
-
 <p><strong>GBp normalization:</strong> some instruments listed on the London Stock Exchange are quoted in pence (<code>GBp</code> = 1/100 GBP). When Yahoo Finance returns a currency of <code>GBp</code>, the tracker automatically divides the price by 100 and stores the currency as <code>GBP</code>. This conversion is silent — no warning is displayed.</p>
-
 <p>The currency stored on a position is updated at every sync. If the currency changes between two syncs (e.g. after a ticker correction), the new value is stored immediately.</p>
-
 <h3>Live price states (status indicators)</h3>
-
 <table>
-  <thead><tr><th>Indicator</th><th>Meaning</th><th>Condition</th></tr></thead>
-  <tbody>
-    <tr><td>⚪</td><td>Never synced</td><td>No sync performed</td></tr>
-    <tr><td>🟢</td><td>Today's price</td><td>Fetched from the market today</td></tr>
-    <tr><td>🟡</td><td>Stale or manual price</td><td>Fetched price dated before today, or a manually entered price</td></tr>
-    <tr><td>🔴</td><td>Sync failed</td><td>Yahoo Finance unreachable or invalid ticker</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Indicator</th>
+<th>Meaning</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>⚪</td>
+<td>Never synced</td>
+<td>No sync performed</td>
+</tr>
+<tr>
+<td>🟢</td>
+<td>Today's price</td>
+<td>Fetched from the market today</td>
+</tr>
+<tr>
+<td>🟡</td>
+<td>Stale or manual price</td>
+<td>Fetched price dated before today, or a manually entered price</td>
+</tr>
+<tr>
+<td>🔴</td>
+<td>Sync failed</td>
+<td>Yahoo Finance unreachable or invalid ticker</td>
+</tr>
+</tbody>
 </table>
-
 <p>A 🟡 price is still used in calculations (P&amp;L, valuation) but may no longer reflect current market conditions.</p>
-
 <h3>Yahoo Finance troubleshooting</h3>
-
 <ul>
-  <li><strong>Invalid ticker</strong> → verify on <a href="https://finance.yahoo.com">finance.yahoo.com</a> that the ticker exists and its suffix is in the list above.</li>
-  <li><strong>Full failure (🔴 everywhere)</strong> → Yahoo Finance temporarily unavailable, or <code>yfinance</code> not installed (<code>pip install yfinance --break-system-packages</code>).</li>
-  <li><strong>Price missing from Dashboard</strong> → a position without a live price (⚪ or 🔴) is excluded from Dashboard KPIs and pie charts.</li>
-  <li><strong>Currency shows <code>—</code> after sync</strong> → the fallback HTTP path (without <code>yfinance</code>) does not expose currency information. Install <code>yfinance</code> to enable full currency reading.</li>
+<li><strong>Invalid ticker</strong> → verify on <a href="https://finance.yahoo.com">finance.yahoo.com</a> that the ticker exists and its suffix is in the list above.</li>
+<li><strong>Full failure (🔴 everywhere)</strong> → Yahoo Finance temporarily unavailable, or <code>yfinance</code> not installed (<code>pip install yfinance --break-system-packages</code>).</li>
+<li><strong>Price missing from Dashboard</strong> → a position without a live price (⚪ or 🔴) is excluded from Dashboard KPIs and pie charts.</li>
+<li><strong>Currency shows <code>—</code> after sync</strong> → the fallback HTTP path (without <code>yfinance</code>) does not expose currency information. Install <code>yfinance</code> to enable full currency reading.</li>
 </ul>
-
-<hr>
-
-<a id="11-historical-fx-rates-frankfurter"></a>
-
+<hr />
+<p><a id="11-historical-fx-rates-frankfurter"></a></p>
 <h2>11. Historical FX rates (Frankfurter)</h2>
-
 <h3>Overview</h3>
-
-<p>The Frankfurter API is used in three contexts:</p>
-<ol>
-  <li><strong>Purchase lots (Securities and Cryptos)</strong> — a rate fixed at each lot's date, native → Options currency, to express Invested and per-row P&amp;L in the Options currency (see <a href="#3-securities-tab">section 3</a>).</li>
-  <li><strong>Securities Sales and Crypto Sales</strong> — a rate fixed at each sale's <strong>sell date</strong>, to convert the sale proceeds when computing realized P&amp;L.</li>
-  <li><strong>History tab</strong> — the rate at December 31 of each row's year, to convert annual totals to the Options currency in the Dashboard (see <a href="#6-history-tab">section 6</a>).</li>
-</ol>
-
+<p>The Frankfurter API is used in three contexts:
+1. <strong>Purchase lots (Securities and Cryptos)</strong> — a rate fixed at each lot's date, native → Options currency, to express Invested and per-row P&amp;L in the Options currency (see <a href="#3-securities-tab">section 3</a>).
+2. <strong>Securities Sales and Crypto Sales</strong> — a rate fixed at each sale's <strong>sell date</strong>, to convert the sale proceeds when computing realized P&amp;L.
+3. <strong>History tab</strong> — the rate at December 31 of each row's year, to convert annual totals to the Options currency in the Dashboard (see <a href="#6-history-tab">section 6</a>).</p>
 <p>All three use <strong>historical rates fixed at the relevant date</strong>, not the current rate. This matches standard broker behavior (Swissquote, etc.): realized P&amp;L in account currency is computed at the rate in effect on each transaction date.</p>
-
-<p>Since V2.0 a sale stores a <strong>single</strong> rate:</p>
-<ul>
-  <li><strong>fxRateSell</strong>: rate (native currency → Options currency) at the sell date.</li>
-</ul>
-
-<p>The buy-side conversion is no longer carried by the sale — it comes from the position's purchase lots, each converted at its own historical rate (context 1 above).</p>
-
+<p>A sale stores a <strong>single</strong> rate:
+- <strong>fxRateSell</strong>: rate (native currency → Options currency) at the sell date.</p>
+<p>The buy-side conversion is not carried by the sale — it comes from the position's purchase lots, each converted at its own historical rate (context 1 above).</p>
 <p><strong>Realized P&amp;L in Options currency</strong> = (Sale proceeds × fxRateSell) − (dated cost basis of the sold units, already in Options currency)</p>
-
 <h3>Rate source — Frankfurter API</h3>
-
 <table>
-  <thead><tr><th>Attribute</th><th>Value</th></tr></thead>
-  <tbody>
-    <tr><td>Source</td><td>https://api.frankfurter.dev/ (free service, no API key)</td></tr>
-    <tr><td>Data</td><td>Official European Central Bank (ECB) rates</td></tr>
-    <tr><td>Coverage</td><td>From January 4, 1999 (first business day post-euro)</td></tr>
-    <tr><td>Updated</td><td>Once per business day, around 4:00 PM CET</td></tr>
-    <tr><td>Currencies</td><td>EUR, USD, CHF, GBP, JPY, HKD, CNY (all supported currencies)</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td>https://api.frankfurter.dev/ (free service, no API key)</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>Official European Central Bank (ECB) rates</td>
+</tr>
+<tr>
+<td>Coverage</td>
+<td>From January 4, 1999 (first business day post-euro)</td>
+</tr>
+<tr>
+<td>Updated</td>
+<td>Once per business day, around 4:00 PM CET</td>
+</tr>
+<tr>
+<td>Currencies</td>
+<td>EUR, USD, CHF, GBP, JPY, HKD, CNY (all supported currencies)</td>
+</tr>
+</tbody>
 </table>
-
 <p>API response format (example USD → EUR on 2024-01-15):</p>
-<pre><code>{"amount": 1.0, "base": "USD", "date": "2024-01-15", "rates": {"EUR": 0.91366}}</code></pre>
-
+<pre><code class="language-json">{&quot;amount&quot;: 1.0, &quot;base&quot;: &quot;USD&quot;, &quot;date&quot;: &quot;2024-01-15&quot;, &quot;rates&quot;: {&quot;EUR&quot;: 0.91366}}
+</code></pre>
 <p><strong>Special cases:</strong></p>
-
 <ul>
-  <li><strong>Weekend or ECB holiday</strong>: the API automatically returns the rate from the last business day. No action required. Example: a sale on Saturday May 23 will use the rate from Friday May 22.</li>
-  <li><strong>Date before 1999 or future date</strong>: the API returns an error. The row remains without a rate (⚪) — manual entry required.</li>
-  <li><strong>Native currency = Options currency</strong>: the rate is automatically 1.0 (no network call, source <code>auto</code>). Example: selling a EUR stock with Options = EUR.</li>
+<li><strong>Weekend or ECB holiday</strong>: the API automatically returns the rate from the last business day. No action required. Example: a sale on Saturday May 23 will use the rate from Friday May 22.</li>
+<li><strong>Date before 1999 or future date</strong>: the API returns an error. The row remains without a rate (⚪) — manual entry required.</li>
+<li><strong>Native currency = Options currency</strong>: the rate is automatically 1.0 (no network call, source <code>auto</code>). Example: selling a EUR stock with Options = EUR.</li>
 </ul>
-
 <h3>FX rate states (status indicators)</h3>
-
-<p>Each sale's sell-date FX rate has a state, shown as a status indicator in the Sales table; purchase-lot rates use the same vocabulary. Manual entry is done inside the sale or lot popup.</p>
-
+<p>Each sale's sell-date FX rate has a state, shown as a status indicator in the Sales table; purchase-lot rates use the same vocabulary. In both cases, manual entry is done inside the item's popup.</p>
 <table>
-  <thead><tr><th>Indicator</th><th>Source</th><th>Meaning</th><th>Recommended action</th></tr></thead>
-  <tbody>
-    <tr><td>⚪</td><td><code>null</code></td><td>No rate entered</td><td>Click 🔄 Sync FX rates</td></tr>
-    <tr><td>🟢</td><td><code>ok</code></td><td>Frankfurter rate up to date</td><td>Nothing</td></tr>
-    <tr><td>🟢</td><td><code>auto</code></td><td>Automatic rate (= 1.0, same currency)</td><td>Nothing</td></tr>
-    <tr><td>🟡</td><td><code>manual</code></td><td>Manually entered rate</td><td>Overwritten at next FX sync</td></tr>
-    <tr><td>🔴</td><td><code>ko</code></td><td>Stale rate (date or currency changed)</td><td>Re-sync</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Indicator</th>
+<th>Source</th>
+<th>Meaning</th>
+<th>Recommended action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>⚪</td>
+<td><code>null</code></td>
+<td>No rate entered</td>
+<td>Click 🔄 Sync FX rates</td>
+</tr>
+<tr>
+<td>🟢</td>
+<td><code>ok</code></td>
+<td>Frankfurter rate up to date</td>
+<td>Nothing</td>
+</tr>
+<tr>
+<td>🟢</td>
+<td><code>auto</code></td>
+<td>Automatic rate (= 1.0, same currency)</td>
+<td>Nothing</td>
+</tr>
+<tr>
+<td>🟡</td>
+<td><code>manual</code></td>
+<td>Manually entered rate</td>
+<td>Overwritten at next FX sync</td>
+</tr>
+<tr>
+<td>🔴</td>
+<td><code>ko</code></td>
+<td>Stale rate (date or currency changed)</td>
+<td>Re-sync</td>
+</tr>
+</tbody>
 </table>
-
 <p>When a rate switches to 🔴, the previously calculated value is <strong>kept</strong> for reference but is no longer used in calculations until re-synced.</p>
-
 <h3>Rate synchronization</h3>
-
-<p>The <strong>🔄 Sync FX rates</strong> button in the toolbar of each Sales screen:</p>
-
+<p>The <strong>🔄 Sync FX rates</strong> button in the toolbar of each Sales view:</p>
 <ul>
-  <li>Queries the Frankfurter API for all ⚪ or 🔴 rows</li>
-  <li><strong>Overwrites</strong> 🟡 (manual) rows: sync is date-based, not source-based</li>
-  <li><strong>Skips</strong> 🟢 rows that are already up to date</li>
-  <li>Displays a result toast: <code>FX rates: N OK / M failed</code></li>
+<li>Queries the Frankfurter API for all ⚪ or 🔴 rows</li>
+<li><strong>Overwrites</strong> 🟡 (manual) rows: sync is date-based, not source-based</li>
+<li><strong>Skips</strong> 🟢 rows that are already up to date</li>
+<li>Displays a result toast: <code>FX rates: N OK / M failed</code></li>
 </ul>
-
 <h3>Manual rate entry</h3>
-
-<p>For a <strong>sale</strong> or a <strong>History</strong> row, the rate is entered inside its popup (the <strong>FX rate (manual)</strong> field). For a <strong>purchase lot</strong>, clicking the ✏️ button on the lot's FX cell opens an input box.</p>
-
+<p>In all three contexts — <strong>sale</strong>, <strong>purchase lot</strong> and <strong>History</strong> row — the rate is entered inside that item's own popup, in the <strong>FX rate (manual)</strong> field, which appears when editing an existing entry. There is no separate inline prompt anywhere.</p>
 <p>Enter the exchange rate (e.g. <code>1.0742</code> for 1 USD = 1.0742 EUR).</p>
-
 <p>The source switches to 🟡 <code>manual</code>. This rate will be <strong>overwritten</strong> by the next FX sync.</p>
-
 <p><strong>Use cases:</strong> Frankfurter unavailable, historical rate not available (before 1999), or exact broker rate preferred — in that case, avoid re-syncing after entry.</p>
-
 <h3>Automatic rate invalidation</h3>
-
 <p>Rates automatically switch to 🔴 (<code>ko</code>) in the following cases:</p>
-
 <table>
-  <thead><tr><th>User action</th><th>Rate invalidated</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Sell date</strong> of a sale changed</td><td>that sale's fxRateSell</td></tr>
-    <tr><td><strong>Lot date</strong> of a purchase changed</td><td>that lot's FX rate</td></tr>
-    <tr><td><strong>Crypto position ticker</strong> changed (currency changes)</td><td>that position's lot FX rates</td></tr>
-    <tr><td><strong>Options currency</strong> changed in ⚙️ Options</td><td><strong>all</strong> sale rates, <strong>all</strong> purchase-lot rates, and <strong>all</strong> History rates</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>User action</th>
+<th>Rate invalidated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sell date</strong> of a sale changed</td>
+<td>that sale's fxRateSell</td>
+</tr>
+<tr>
+<td><strong>Lot date</strong> of a purchase changed</td>
+<td>that lot's FX rate</td>
+</tr>
+<tr>
+<td><strong>Crypto position ticker</strong> changed (currency changes)</td>
+<td>that position's lot FX rates</td>
+</tr>
+<tr>
+<td><strong>Options currency</strong> changed in ⚙️ Options</td>
+<td><strong>all</strong> sale rates, <strong>all</strong> purchase-lot rates, and <strong>all</strong> History rates</td>
+</tr>
+</tbody>
 </table>
-
 <p>🟡 (manual) rates follow the same invalidation rules: they switch to 🔴 if the date or currency is changed.</p>
-
 <p>When the Options currency changes, an orange <strong>warning toast</strong> is displayed: <code>⚠️ Display currency changed — FX rates for exits invalidated. Please re-sync.</code></p>
-
-<blockquote><p>🟡 (manual) rates are also invalidated in this case. To preserve an exact broker rate after an Options currency change, re-enter it manually after the re-sync.</p></blockquote>
-
-<hr>
-
-<a id="12-calculations"></a>
-
+<blockquote>
+<p>🟡 (manual) rates are also invalidated in this case. To preserve an exact broker rate after an Options currency change, re-enter it manually after the re-sync.</p>
+</blockquote>
+<hr />
+<p><a id="12-calculations"></a></p>
 <h2>12. Calculations</h2>
-
-<p>This section details the calculation model used by the tracker. Native amounts (purchase price, native WAC, live price) stay in the position's own currency; the invested and valuation figures shown per row and in the KPIs are expressed in the Options currency — invested at each lot's historical rate, valuation at today's rate.</p>
-
+<p>This section details all calculation formulas used by the tracker.</p>
+<p>Two currencies coexist in every calculation. The <strong>native currency</strong> of the instrument — read from Yahoo Finance at sync for CTO positions, inferred from the composite ticker for Crypto positions — carries the raw inputs: unit prices, fees, and the average cost derived from them. The <strong>Options currency</strong> carries everything meant to be compared or added up across instruments: invested amounts, valuations, P&amp;L, weights, and all consolidated KPIs.</p>
+<p>The crossing point is the exchange rate, and <em>which</em> rate applies depends on what is being measured: cost figures use the <strong>historical</strong> rate of each purchase lot's own date, valuations use <strong>today's</strong> rate, and sale proceeds use the rate at the <strong>sell date</strong>. This is what the rest of this section spells out formula by formula.</p>
 <h3>12.1 Position calculations (CTO or Crypto)</h3>
-
-<p>Each purchase lot has <code>qty</code>, <code>price</code>, <code>fees</code>, a <strong>required</strong> <code>date</code>, and a historical <code>fxRate</code> (native → Options currency, at the lot's date). Sales recorded in the Sales tab are matched to the position. From this, the tracker derives:</p>
-
+<p>Each purchase lot has <code>qty</code>, <code>price</code>, <code>fees</code>, a <strong>required</strong> <code>date</code>, and a historical <code>fxRate</code> (native → Options currency, at the lot's date). Sales recorded in the Sales view are matched to the position. From this, the tracker derives:</p>
 <h4>Total quantity bought (<code>tq</code>)</h4>
-
-<pre><code>tq = Σ purchases[i].qty</code></pre>
-
+<pre><code>tq = Σ purchases[i].qty
+</code></pre>
 <p>Sum across all lots. <em>Example: lots of 10 and 5 shares → <code>tq = 15</code>.</em></p>
-
 <h4>Remaining quantity (<code>remaining</code>)</h4>
-
-<pre><code>remaining = tq − Σ (linked sales).qty</code></pre>
-
+<pre><code>remaining = tq − Σ (linked sales).qty
+</code></pre>
 <p>Quantity still held after every recorded sale of this position. This — not <code>tq</code> — is what drives valuation and invested. <em>Example: 15 bought, 5 sold → <code>remaining = 10</code>.</em></p>
-
 <h4>Running stock and negative-stock detection</h4>
-
 <p>Buys (+) and sales (−) are walked in date order (a buy comes before a sale on the same date). The <strong>minimum</strong> the running stock reaches is tracked: if it ever goes below zero, the position has a <strong>negative stock</strong> (more sold than held at some point) and its valuation is marked unavailable. <em>Example: sell 6 on a date when only 5 had been bought → running stock hits −1 → flagged.</em></p>
-
 <h4>Native weighted average cost (<code>wac</code>)</h4>
-
-<pre><code>wac = ti / tq        where ti = Σ (qty × price + fees)</code></pre>
-
+<pre><code>wac = ti / tq        where ti = Σ (qty × price + fees)
+</code></pre>
 <p>Fee-inclusive average cost per unit, in <strong>native</strong> currency. It is invariant to sales (always <code>ti / tq</code>, never <code>ti / remaining</code>). <em>Example: (10×150+5) + (5×160+5) = 2,310 over 15 → <code>wac = 154 €</code>.</em></p>
-
 <h4>Dated cost basis (<code>wacBaseAt(date)</code>)</h4>
-
-<p>The fee-inclusive weighted average cost of the lots dated <strong>on or before <code>date</code></strong>, converted to the Options currency at each lot's own historical <code>fxRate</code> — <strong>all-or-nothing</strong>: if any relevant lot's rate is unresolved, the result is unavailable (<code>—</code>). Recomputed at every display, never frozen. This is the accessor the Sales screen uses for its <strong>Avg cost</strong> column (with <code>date</code> = the sell date), replacing the old value that was frozen at the moment of sale.</p>
-
+<p>The fee-inclusive weighted average cost of the lots dated <strong>on or before <code>date</code></strong>, converted to the Options currency at each lot's own historical <code>fxRate</code> — <strong>all-or-nothing</strong>: if any relevant lot's rate is unresolved, the result is unavailable (<code>—</code>). Recomputed at every display, never frozen. This is the accessor the Sales view uses for its <strong>Avg cost</strong> column, with <code>date</code> = the sell date.</p>
 <h4>Invested still held (<code>investedRemaining</code>)</h4>
-
-<pre><code>investedRemaining = remaining × wacBase</code></pre>
-
+<pre><code>investedRemaining = remaining × wacBase
+</code></pre>
 <p>Cost basis of the quantity still held, in the <strong>Options currency</strong>. <code>wacBase</code> is the position-level dated cost basis over <em>all</em> lots (all-or-nothing on their FX rates). Unavailable if any lot rate is unresolved or the position has a negative stock.</p>
-
 <h4>Valuation (<code>valo</code>)</h4>
-
-<pre><code>valo = remaining × livePrice     (native), then converted to the Options currency</code></pre>
-
+<pre><code>valo = remaining × livePrice     (native), then converted to the Options currency
+</code></pre>
 <p>Current value of the units still held. Unavailable (excluded from KPIs) if there is no live price or the position has a negative stock. <em>Example: 10 held × 175 € → 1,750 €.</em></p>
-
 <h4>P&amp;L and Chg (<code>gp</code>, <code>evol</code>)</h4>
-
 <pre><code>gp   = valuation(Options) − investedRemaining(Options)
-evol = gp / investedRemaining</code></pre>
-
+evol = gp / investedRemaining
+</code></pre>
 <p>Both in the Options currency: invested is converted at each lot's historical rate, valuation at today's rate. Unavailable if either side is missing.</p>
-
 <h3>12.2 Sale calculations (Securities Sales and Crypto Sales)</h3>
-
-<p>A sale carries only its <strong>sell side</strong> (<code>qSold</code>, <code>priceSell</code>, <code>feesSell</code>, <code>sellDate</code>, <code>fxRateSell</code>). Its <strong>cost basis is read back from the position's purchase lots at display time</strong> — it is no longer stored on the sale. <code>pos</code> is the position of origin (or none, if it was deleted).</p>
-
+<p>A sale carries only its <strong>sell side</strong> (<code>qSold</code>, <code>priceSell</code>, <code>feesSell</code>, <code>sellDate</code>, <code>fxRateSell</code>). Its <strong>cost basis is read back from the position's purchase lots at display time</strong> rather than being stored on the sale. <code>pos</code> is the position of origin (or none, if it was deleted).</p>
 <h4>Native sale total (<code>ts</code>)</h4>
-
-<pre><code>ts = qSold × priceSell − feesSell</code></pre>
-
+<pre><code>ts = qSold × priceSell − feesSell
+</code></pre>
 <p>Net amount received, in native currency. <em>Example: 5 shares at 200 € with 5 € fees → <code>ts = 995 €</code>.</em></p>
-
 <h4>Dated cost basis (<code>wb</code>)</h4>
-
-<pre><code>wb = wacBaseAt(pos, sellDate)          (Options currency, see §12.1)</code></pre>
-
+<pre><code>wb = wacBaseAt(pos, sellDate)          (Options currency, see §12.1)
+</code></pre>
 <p>The fee-inclusive weighted average cost of the lots dated on or before the sell date, converted at each lot's historical rate. <code>null</code> if the position was deleted, has no lot on or before the sell date, or a relevant lot's FX rate is unresolved — the whole sale then shows <code>—</code>.</p>
-
 <h4>Buy total, Options currency (<code>tb</code>)</h4>
-
-<pre><code>tb = qSold × wb</code></pre>
-
+<pre><code>tb = qSold × wb
+</code></pre>
 <p>Cost basis of the sold units, already in the Options currency (no separate buy-side FX rate). <em>Example: 5 × 150.50 € → <code>tb = 752.50 €</code>.</em></p>
-
 <h4>Sale total, Options currency (<code>tsOpt</code>)</h4>
-
-<pre><code>tsOpt = ts × fxRateSell</code></pre>
-
+<pre><code>tsOpt = ts × fxRateSell        (requires only fxRateSell — independent of the cost basis)
+</code></pre>
 <p><em>Example (USD→EUR, fxRateSell = 0.92): <code>tsOpt = 995 × 0.92 = 915.40 €</code>.</em></p>
-
+<p>This is the one Options-currency figure that does <strong>not</strong> need the position: it is computed from the sale's own fields alone. A sale whose position was deleted still displays its <code>Total S</code>.</p>
 <h4>Realized P&amp;L, Options currency (<code>gpOpt</code>)</h4>
-
-<pre><code>gpOpt = tsOpt − tb</code></pre>
-
+<pre><code>gpOpt = tsOpt − tb
+</code></pre>
 <p><em>Example: <code>gpOpt = 915.40 − 752.50 = +162.90 €</code>.</em></p>
-
 <h4>P&amp;L % (<code>pct</code>)</h4>
-
-<pre><code>pct = gpOpt / tb        (in Options currency; null if tb ≤ 0)</code></pre>
-
-<blockquote><p><strong>Both</strong> conditions are required for the Options-currency columns (Total S, P&amp;L, P&amp;L %): the sell-date <code>fxRateSell</code> must be resolved <strong>and</strong> the dated cost basis <code>wb</code> must be available. If either is missing, those columns show <code>—</code> and the sale is excluded from the consolidated KPIs.</p></blockquote>
-
+<pre><code>pct = gpOpt / tb        (in Options currency; null if tb ≤ 0)
+</code></pre>
+<blockquote>
+<p><strong>What each column needs.</strong> <code>Total S</code> requires only a resolved <code>fxRateSell</code>. <code>Total B</code> requires only an available dated cost basis <code>wb</code>. <code>P&amp;L</code> and <code>P&amp;L %</code> require <strong>both</strong>, since they subtract one from the other. Any column whose inputs are missing shows <code>—</code>.</p>
+<p><strong>Consolidated KPIs are stricter:</strong> a sale enters the four KPIs only when <code>fxRateSell</code> <strong>and</strong> <code>wb</code> are both available — that is, exactly when its <code>P&amp;L</code> is computable. A sale showing a <code>Total S</code> but no cost basis stays out of every total.</p>
+</blockquote>
 <h3>12.3 Currency conversion</h3>
-
 <p>The <code>convert(amount, fromCur, toCur)</code> function converts amounts between EUR, USD, CHF, GBP, JPY, HKD and CNY using the rates stored in <code>fxRates</code>. EUR ↔ USD and EUR ↔ CHF use direct Yahoo Finance rates (<code>EURUSD=X</code>, <code>EURCHF=X</code>, <code>USDCHF=X</code>). Conversions involving GBP, JPY, HKD or CNY use EUR-based rates (<code>EURGBP=X</code>, <code>EURJPY=X</code>, <code>EURHKD=X</code>, <code>EURCNY=X</code>); cross-currency conversions not involving EUR (e.g. GBP → USD) triangulate through EUR.</p>
-
 <table>
-  <thead><tr><th>From → To</th><th>Formula</th></tr></thead>
-  <tbody>
-    <tr><td>EUR → USD</td><td><code>amount × eurusd</code></td></tr>
-    <tr><td>EUR → CHF</td><td><code>amount × eurchf</code></td></tr>
-    <tr><td>USD → EUR</td><td><code>amount / eurusd</code></td></tr>
-    <tr><td>USD → CHF</td><td><code>amount × usdchf</code></td></tr>
-    <tr><td>CHF → EUR</td><td><code>amount / eurchf</code></td></tr>
-    <tr><td>CHF → USD</td><td><code>amount / usdchf</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>From → To</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EUR → USD</td>
+<td><code>amount × eurusd</code></td>
+</tr>
+<tr>
+<td>EUR → CHF</td>
+<td><code>amount × eurchf</code></td>
+</tr>
+<tr>
+<td>USD → EUR</td>
+<td><code>amount / eurusd</code></td>
+</tr>
+<tr>
+<td>USD → CHF</td>
+<td><code>amount × usdchf</code></td>
+</tr>
+<tr>
+<td>CHF → EUR</td>
+<td><code>amount / eurchf</code></td>
+</tr>
+<tr>
+<td>CHF → USD</td>
+<td><code>amount / usdchf</code></td>
+</tr>
+</tbody>
 </table>
-
 <p>GBP, JPY, HKD and CNY conversions all triangulate through EUR. For example: GBP → USD = <code>amount / eurgbp × eurusd</code>; JPY → CHF = <code>amount / eurjpy × eurchf</code>.</p>
-
 <p>If source and destination currencies are the same, the amount is returned unchanged. If the required rate is not available in <code>fxRates</code> (never synced), the conversion returns <code>null</code> and the value is treated as unavailable in downstream calculations.</p>
-
 <p><em>Example: converting 1,000 USD to EUR with <code>eurusd = 1.08</code> → <code>1,000 / 1.08 ≈ 925.93 €</code>.</em></p>
-
 <h3>12.4 Consolidated totals (Securities / Cryptos tabs) and Dashboard valuation</h3>
-
-<p>Two distinct consolidations exist, displayed in different places:</p>
-<ul>
-  <li>The <strong>Dashboard</strong> shows a single consolidated KPI: the <strong>total valuation</strong> across all live positions (Securities + Cryptos), plus an indicator counting positions excluded for lack of a price or FX rate. It does <strong>not</strong> display a consolidated invested amount or a consolidated P&amp;L.</li>
-  <li>The <strong>Securities</strong> and <strong>Cryptos</strong> tabs each show three KPIs — <strong>Invested</strong>, <strong>Valuation</strong> and <strong>P&amp;L</strong> — consolidated over that tab's own positions, all in the Options currency.</li>
-</ul>
-
-<p>All three consolidations use the same conversion logic described below.</p>
-
-<h4>Total valuation (main Dashboard KPI and per-tab Valuation KPI)</h4>
-
-<pre><code>Valo totale = Σ convert(position.valo, position.currency, deviseOptions)   (today's rate)</code></pre>
-
-<p>The valuations of all live positions (<code>remaining × livePrice</code>) are summed after individual conversion to the Options currency at today's rate. Positions without a <code>livePrice</code>, with missing FX data, or with a negative stock are silently excluded; an <code>excludedCount</code> indicator appears in the Dashboard.</p>
-
-<p><em>Example, Options currency = EUR, two positions:</em></p>
-<ul>
-  <li><em>AAPL: valo = 2,000 USD, converted with <code>eurusd = 1.08</code> → 1,851.85 €</em></li>
-  <li><em>CW8.PA: valo = 1,500 €, already in EUR → 1,500 €</em></li>
-  <li><em>Total Dashboard valuation = 3,351.85 €</em></li>
-</ul>
-
-<h4>Consolidated total invested (per-tab Invested KPI)</h4>
-
-<pre><code>Investi total = Σ position.investedRemaining</code></pre>
-
-<p>Sum of each position's <code>investedRemaining</code>, which is <strong>already in the Options currency</strong> — converted at each purchase lot's <em>own historical rate</em> (§12.1), not re-converted at today's rate. Only positions that have a live price <strong>and</strong> a fully resolved cost basis are counted. This consolidation appears as the <strong>Invested</strong> KPI in the Securities and Cryptos tabs (not on the Dashboard) and is used to derive each tab's P&amp;L.</p>
-
-<blockquote><p><strong>Historical, per-lot conversion.</strong> Unlike valuation (today's rate), the invested amount is converted lot by lot at the rate that applied on each lot's date. This is why a position's per-lot FX rates must be synced (<a href="#3-securities-tab">section 3</a>) for its Invested — and therefore its P&amp;L — to appear. A position with any unresolved lot rate is left out of the Invested and P&amp;L KPIs.</p></blockquote>
-
-<h4>Consolidated P&amp;L and percentage (per-tab P&amp;L KPI)</h4>
-
-<pre><code>G/P consolidé = Valo totale − Investi total
-%             = G/P consolidé / Investi total</code></pre>
-
-<p>Calculated from the values already converted to the Options currency, and displayed as the <strong>P&amp;L</strong> KPI in the Securities and Cryptos tabs.</p>
-
+<p>The same four KPIs — <strong>Invested</strong>, <strong>Valuation</strong>, <strong>P&amp;L</strong>, <strong>P&amp;L %</strong> — appear in three places, all in the Options currency:
+- The <strong>Securities</strong> and <strong>Cryptos</strong> tabs consolidate that tab's own open positions.
+- The <strong>Dashboard</strong> consolidates both at once.</p>
+<p><strong>They share one scope, which is what makes them add up.</strong> A position is counted only if it has a live price <strong>and</strong> a fully resolved cost basis. Securities + Cryptos therefore equals the Dashboard, KPI by KPI — an equality you can check with a calculator.</p>
+<p>The Dashboard's <strong>pie charts</strong> use a wider scope (a known value is enough, no cost basis required) and can therefore total more than the Valuation KPI. That gap only appears while a purchase lot is missing its historical FX rate, and the <strong>Missing FX rates</strong> banner is on screen whenever it does.</p>
+<p>All these consolidations use the conversion logic described below.</p>
+<h4>Total valuation (Valuation KPI)</h4>
+<pre><code>Total valuation = Σ convert(position.valo, position.currency, optionsCurrency)   (today's rate)
+</code></pre>
+<p>The valuations of the positions in scope (<code>remaining × livePrice</code>) are summed after individual conversion to the Options currency at today's rate. Positions without a <code>livePrice</code>, without a resolved cost basis, with missing FX data, or with a negative stock are silently excluded. The <code>excludedCount</code> indicator on the Dashboard counts positions dropped from the <strong>breakdowns</strong> for a missing rate — not those left out of the KPIs for a missing cost basis, which the FX banner already reports.</p>
+<p><em>Example, Options currency = EUR, two positions:</em>
+- <em>AAPL: valo = 2,000 USD, converted with <code>eurusd = 1.08</code> → 1,851.85 €</em>
+- <em>CW8.PA: valo = 1,500 €, already in EUR → 1,500 €</em>
+- <em>Total Dashboard valuation = 3,351.85 €</em></p>
+<h4>Consolidated total invested (Invested KPI)</h4>
+<pre><code>Total invested = Σ position.investedRemaining
+</code></pre>
+<p>Sum of each position's <code>investedRemaining</code>, which is <strong>already in the Options currency</strong> — converted at each purchase lot's <em>own historical rate</em> (§12.1), not re-converted at today's rate. Only positions that have a live price <strong>and</strong> a fully resolved cost basis are counted.</p>
+<blockquote>
+<p><strong>Historical, per-lot conversion.</strong> Unlike valuation (today's rate), the invested amount is converted lot by lot at the rate that applied on each lot's date. This is why a position's per-lot FX rates must be synced (<a href="#3-securities-tab">section 3</a>) for its Invested — and therefore its P&amp;L — to appear. A position with any unresolved lot rate is left out of the Invested and P&amp;L KPIs.</p>
+</blockquote>
+<h4>Consolidated P&amp;L and percentage (P&amp;L and P&amp;L % KPIs)</h4>
+<pre><code>Consolidated P&amp;L = Total valuation − Total invested
+P&amp;L %            = Consolidated P&amp;L / Total invested        (— when Total invested is zero)
+</code></pre>
+<p>Calculated from the values already converted to the Options currency. Both appear in the Securities and Cryptos tabs and on the Dashboard.</p>
+<p><strong>Archived positions are excluded</strong> from all four KPIs — with no effect on any figure, since an archived position is fully sold and its invested amount and valuation are both zero.</p>
 <h3>12.5 Dashboard pie charts</h3>
-
 <p>The four pie charts (by asset class, by broker, CTO positions, Crypto positions) use <strong>valuations converted to the Options currency</strong>, exactly like the main KPI. Positions with unavailable FX data are excluded. No specific calculation: these are views of the same aggregated value grouped by different keys.</p>
-
 <h3>12.6 Annual trend chart</h3>
-
-<pre><code>Pour chaque année h ∈ historique :
-  point.y = h.total × h.fxRate     (h.fxRate = taux ligne → devise Options)</code></pre>
-
+<pre><code>For each year h in history:
+  point.y = h.total × h.fxRate     (h.fxRate = row currency → Options currency)
+</code></pre>
 <p>Each history row is converted from its own currency to the Options currency using the row's stored <code>fxRate</code>: the Frankfurter rate at December 31 of the row's year, or — when the row is the current year, for which December 31 has not yet occurred — the rate at today's date. The matching <code>fxRateSource</code> records how the rate was obtained, using History's own vocabulary: <code>frankfurter</code> (rate at Dec 31), <code>today</code> (current-year rate at today's date), <code>auto</code> (row currency = Options currency, rate = 1.0), <code>manual</code> (manually entered), or <code>ko</code>/<code>null</code> when unavailable. Rows whose rate is missing or invalid (<code>ko</code>/<code>null</code>) are excluded from the chart and the snapshot table.</p>
-
 <p>The annual change in the table below the chart is calculated <strong>after conversion</strong>, i.e. in the Options currency:</p>
-
-<pre><code>Variation année N = (h[N].total_converti − h[N−1].total_converti) / h[N−1].total_converti</code></pre>
-
+<pre><code>Change for year N = (h[N].total_converted − h[N−1].total_converted) / h[N−1].total_converted
+</code></pre>
 <h3>12.7 Realized P&amp;L KPI (Sales)</h3>
-
 <p>The realized P&amp;L is displayed in the <strong>Options currency</strong>, consolidated across all sales with available fixed FX rates:</p>
-
-<pre><code>gpTotal = Σ gpOpt   for sales whose sell-date fxRateSell is resolved AND whose dated cost basis is available</code></pre>
-
+<pre><code>gpTotal = Σ gpOpt   for sales whose sell-date fxRateSell is resolved AND whose dated cost basis is available
+</code></pre>
 <p>Sales missing either (⚪ status indicator) are excluded from this total and counted separately (shown below the KPI in gray). A ⚠️ No FX rate KPI lists the number of incomplete sales. The <strong>Total B</strong>, <strong>Total S</strong> and <strong>P&amp;L %</strong> KPIs share exactly the same perimeter.</p>
-
+<p>Sales attached to an <strong>archived</strong> position are included: archiving preserves the purchase lots, so the dated cost basis remains computable. Nothing about archiving changes a realized result.</p>
 <p>See <a href="#11-historical-fx-rates-frankfurter">section 11</a> for complete management of fixed FX rates.</p>
-
-<hr>
-
-<a id="13-price-synchronization"></a>
-
+<hr />
+<p><a id="13-price-synchronization"></a></p>
 <h2>13. Price synchronization</h2>
-
-<h3>🔄 Sync all prices button (header)</h3>
-<p>Simultaneously triggers:</p>
-<ol>
-  <li>CTO price fetch via Yahoo Finance</li>
-  <li>Crypto price fetch via CoinGecko (grouped by currency)</li>
-  <li>FX rate fetch via Yahoo Finance</li>
-</ol>
-
-<h3>Per-tab 🔄 buttons</h3>
-<ul>
-  <li><strong>Sync CTO prices</strong>: Yahoo Finance only + FX</li>
-  <li><strong>Sync Crypto prices</strong>: CoinGecko only + FX</li>
-</ul>
-
-<h3>🔄 Sync FX rates button (Sales screens)</h3>
-<p>Dedicated to historical FX rates for sales. Queries Frankfurter for all rows without a valid rate. See <a href="#11-historical-fx-rates-frankfurter">section 11</a>.</p>
-
+<h3>🔄 Sync all button (header)</h3>
+<p>The single button that refreshes everything. It triggers, in order:
+1. CTO price fetch via Yahoo Finance
+2. Crypto price fetch via CoinGecko (grouped by currency)
+3. Daily FX rate fetch via Yahoo Finance
+4. Historical FX rates (Frankfurter) for History rows, for sales, <strong>and for purchase lots</strong> — Securities and Cryptos alike</p>
+<p>Because it covers the per-lot rates too, this button alone is enough to bring a portfolio fully up to date; the per-screen buttons below are for targeted refreshes.</p>
+<h3>Per-tab 🔄 Sync prices button</h3>
+<p>Present on both the Securities and Cryptos tabs, and scoped to that tab: Yahoo Finance for Securities, CoinGecko for Cryptos, plus the daily FX rates in both cases.</p>
+<p><strong>Archived positions are skipped</strong> — nothing remains to value, and one fewer request is sent.</p>
+<h3>🔄 Sync FX rates button</h3>
+<p>Dedicated to <strong>historical</strong> rates, present on the Securities and Cryptos tabs (purchase lots), on the Sales views, and on the History tab. Queries Frankfurter for all rows without a valid rate. See <a href="#11-historical-fx-rates-frankfurter">section 11</a>.</p>
+<p><strong>Archived positions are included here</strong>, unlike the price sync. Their purchase lots are what makes their sales' cost basis computable — and changing the reporting currency invalidates every lot rate, archived or not. Skipping them would silently blank out the Total B and P&amp;L of all their sales, which is exactly what archiving exists to prevent.</p>
 <h3>Sync result toast</h3>
-<p>Displays for each type:</p>
-<ul>
-  <li><code>Stocks: N ✅ M ❌</code> with the list of failed tickers in parentheses.</li>
-  <li><code>Crypto: N ✅ M ❌</code> with the list of failed composite tickers.</li>
-</ul>
-
+<p>Displays for each type:
+- <code>Stocks: N ✅ M ❌</code> with the list of failed tickers in parentheses.
+- <code>Crypto: N ✅ M ❌</code> with the list of failed composite tickers.</p>
 <p>A total failure on cryptos (<code>0 ✅</code>) usually indicates an identifier issue: use the CoinGecko <code>id</code>, not the symbol (see <a href="#ticker-crypto">section 9</a>).</p>
-
 <h3>Prerequisites for CTO prices</h3>
-<pre><code>pip install yfinance --break-system-packages</code></pre>
+<pre><code class="language-bash">pip install yfinance --break-system-packages
+</code></pre>
 <p>Without <code>yfinance</code>, the tracker falls back to a direct Yahoo Finance API call (less reliable). Note: the fallback path does not expose currency information — install <code>yfinance</code> to enable automatic currency reading at sync.</p>
-
 <h3>Manual price entry ✏️</h3>
 <p>Each position has an ✏️ button for manual price entry. Useful for unlisted assets or when synchronization fails. A manually entered price is flagged with the 🟡 indicator (manual source) and is used in calculations like any other price.</p>
-
-<blockquote><p><strong>Warning:</strong> a manually entered price will be <strong>overwritten</strong> by the next sync (🔄 button). If Yahoo Finance or CoinGecko return a price for that ticker, it will replace the entered value.</p></blockquote>
-
+<blockquote>
+<p><strong>Warning:</strong> a manually entered price will be <strong>overwritten</strong> by the next sync (🔄 button). If Yahoo Finance or CoinGecko return a price for that ticker, it will replace the entered value.</p>
+</blockquote>
 <h3>Behavior after a ticker change</h3>
 <p>The live price is invalidated. No automatic sync is triggered at this point: a sync must be launched explicitly. This avoids unnecessary network calls during successive keystrokes (corrections, hesitations).</p>
-
 <p>For CTO positions, the currency is not recalculated at ticker change — it is updated only at the next sync from Yahoo Finance.</p>
-
-<hr>
-
-<a id="14-data-and-storage"></a>
-
+<hr />
+<p><a id="14-data-and-storage"></a></p>
 <h2>14. Data and storage</h2>
-
 <h3>File <code>portfolio_data.json</code></h3>
-
 <p>Every change made in the interface is <strong>saved immediately</strong> to this file. There is no global Save button.</p>
-
 <h3>File structure</h3>
-
-<pre><code>{
-  "settings": {
-    "currency": "eur",
-    "brokers": ["Broker 1", "Broker 2"],
-    "classes": ["Stocks", "Metals", "Real estate"]
+<pre><code class="language-json">{
+  &quot;settings&quot;: {
+    &quot;currency&quot;: &quot;eur&quot;,
+    &quot;brokers&quot;: [&quot;Broker 1&quot;, &quot;Broker 2&quot;],
+    &quot;classes&quot;: [&quot;Stocks&quot;, &quot;Metals&quot;, &quot;Real estate&quot;]
   },
-  "cto": [
+  &quot;cto&quot;: [
     {
-      "id": 1,
-      "name": "Apple",
-      "isin": "US0378331005",
-      "ticker": "AAPL",
-      "broker": "Broker 1",
-      "classe": "Stocks",
-      "currency": "usd",
-      "purchases": [ {"date": "2023-01-10", "qty": 10, "price": 150, "fees": 5, "fxRate": 0.9411, "fxRateSource": "ok"} ],
-      "livePrice": 180,
-      "priceSource": "auto",
-      "priceDate": "2026-05-23 10:30:00"
+      &quot;id&quot;: 1,
+      &quot;name&quot;: &quot;Apple&quot;,
+      &quot;isin&quot;: &quot;US0378331005&quot;,
+      &quot;ticker&quot;: &quot;AAPL&quot;,
+      &quot;broker&quot;: &quot;Broker 1&quot;,
+      &quot;classe&quot;: &quot;Stocks&quot;,
+      &quot;currency&quot;: &quot;usd&quot;,
+      &quot;purchases&quot;: [ {&quot;date&quot;: &quot;2023-01-10&quot;, &quot;qty&quot;: 10, &quot;price&quot;: 150, &quot;fees&quot;: 5, &quot;fxRate&quot;: 0.9411, &quot;fxRateSource&quot;: &quot;ok&quot;} ],
+      &quot;livePrice&quot;: 180,
+      &quot;priceSource&quot;: &quot;auto&quot;,
+      &quot;priceDate&quot;: &quot;2026-05-23 10:30:00&quot;,
+      &quot;archived&quot;: true,
+      &quot;archivedAt&quot;: &quot;2026-07-27 14:05:00&quot;
     }
   ],
-  "crypto": [
+  &quot;crypto&quot;: [
     {
-      "id": 1,
-      "name": "Bitcoin",
-      "ticker": "bitcoin:usd",
-      "currency": "usd",
-      "purchases": [ ... ],
-      "livePrice": 95000,
-      "priceSource": "auto",
-      "priceDate": "..."
+      &quot;id&quot;: 1,
+      &quot;name&quot;: &quot;Bitcoin&quot;,
+      &quot;ticker&quot;: &quot;bitcoin:usd&quot;,
+      &quot;currency&quot;: &quot;usd&quot;,
+      &quot;purchases&quot;: [ ... ],
+      &quot;livePrice&quot;: 95000,
+      &quot;priceSource&quot;: &quot;auto&quot;,
+      &quot;priceDate&quot;: &quot;...&quot;
     }
   ],
-  "ctoTrades": [
+  &quot;ctoTrades&quot;: [
     {
-      "id": 1,
-      "posId": 1,
-      "sellDate": "2024-03-15",
-      "name": "Apple",
-      "isin": "US0378331005",
-      "ticker": "AAPL",
-      "currency": "usd",
-      "qSold": 5,
-      "priceSell": 200,
-      "feesSell": 5,
-      "fxRateSell": 0.9137,
-      "fxRateSellSource": "ok"
+      &quot;id&quot;: 1,
+      &quot;posId&quot;: 1,
+      &quot;sellDate&quot;: &quot;2024-03-15&quot;,
+      &quot;name&quot;: &quot;Apple&quot;,
+      &quot;isin&quot;: &quot;US0378331005&quot;,
+      &quot;ticker&quot;: &quot;AAPL&quot;,
+      &quot;currency&quot;: &quot;usd&quot;,
+      &quot;qSold&quot;: 5,
+      &quot;priceSell&quot;: 200,
+      &quot;feesSell&quot;: 5,
+      &quot;fxRateSell&quot;: 0.9137,
+      &quot;fxRateSellSource&quot;: &quot;ok&quot;
     }
   ],
-  "cryptoTrades": [ ... ],
-  "historique": [
+  &quot;cryptoTrades&quot;: [ ... ],
+  &quot;historique&quot;: [
     {
-      "year": 2025,
-      "currency": "eur",
-      "securities": 80000,
-      "crypto": 20000,
-      "total": 100000,
-      "classes": { "Stocks": 50000, "Metals": 10000, "Real estate": 20000 },
-      "fxRate": 1.047,
-      "fxRateSource": "frankfurter"
+      &quot;year&quot;: 2025,
+      &quot;currency&quot;: &quot;eur&quot;,
+      &quot;securities&quot;: 80000,
+      &quot;crypto&quot;: 20000,
+      &quot;total&quot;: 100000,
+      &quot;classes&quot;: { &quot;Stocks&quot;: 50000, &quot;Metals&quot;: 10000, &quot;Real estate&quot;: 20000 },
+      &quot;fxRate&quot;: 1.047,
+      &quot;fxRateSource&quot;: &quot;frankfurter&quot;
     }
   ],
-  "ctoDivs": [],
-  "fxRates": { "eurusd": 1.08, "eurchf": 0.96, "usdchf": 0.89, "eurgbp": 0.85, "eurjpy": 163.2, "eurhkd": 8.41, "eurcny": 7.78 }
-}</code></pre>
-
+  &quot;ctoDivs&quot;: [],
+  &quot;fxRates&quot;: { &quot;eurusd&quot;: 1.08, &quot;eurchf&quot;: 0.96, &quot;usdchf&quot;: 0.89, &quot;eurgbp&quot;: 0.85, &quot;eurjpy&quot;: 163.2, &quot;eurhkd&quot;: 8.41, &quot;eurcny&quot;: 7.78 }
+}
+</code></pre>
 <p><strong><code>cto[].currency</code></strong>: set by Yahoo Finance at each price sync. <code>null</code> or absent before first sync — displayed as <code>—</code> in the interface.</p>
-
-<p><strong><code>cto[].purchases[].date</code></strong>: <strong>mandatory</strong> since V2.0. <strong><code>.fxRate</code> / <code>.fxRateSource</code></strong>: the lot's historical rate (native → Options currency) at its date, and its state — same value set as sales (below). Populated by the tab's <strong>🔄 Sync FX rates</strong>.</p>
-
-<p><strong><code>ctoTrades[].posId</code></strong>: links the sale back to its position of origin. <strong><code>.name</code> / <code>.isin</code> / <code>.ticker</code> / <code>.currency</code></strong>: copied from that position at creation and then frozen (read-only on the sale). The sale stores <strong>no</strong> buy side — its cost basis is recomputed at display time from the position's purchase lots (<code>wacBaseAt(sellDate)</code>).</p>
-
+<p><strong><code>cto[].purchases[].date</code></strong>: <strong>mandatory</strong>. <strong><code>.fxRate</code> / <code>.fxRateSource</code></strong>: the lot's historical rate (native → Options currency) at its date, and its state — same value set as sales (below). Populated by the tab's <strong>🔄 Sync FX rates</strong>.</p>
+<p><strong><code>cto[].archived</code> / <code>.archivedAt</code></strong>: optional. Present only on an archived position — their absence is the normal state of an open one, so no existing file needs converting. <code>archivedAt</code> records when the position was put away and is removed on restore.</p>
+<p><strong><code>ctoTrades[].posId</code></strong>: links the sale back to its position of origin, and is what the display uses to read the position's current <strong>name</strong>, <strong>ISIN</strong> and <strong>ticker</strong>. The <code>.name</code> / <code>.isin</code> / <code>.ticker</code> fields stored on the sale are a <strong>fallback</strong>, used only if the position no longer exists. <strong><code>.currency</code></strong> is different: it belongs to the sale itself and is never re-read from the position. The sale stores <strong>no</strong> buy side — its cost basis is recomputed at display time from the position's purchase lots (<code>wacBaseAt(sellDate)</code>).</p>
 <p><strong><code>fxRateSellSource</code> (Sales) and <code>purchases[].fxRateSource</code> (lots) values:</strong></p>
-
 <table>
-  <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
-  <tbody>
-    <tr><td><code>null</code></td><td>No rate entered</td></tr>
-    <tr><td><code>"ok"</code></td><td>Frankfurter rate up to date</td></tr>
-    <tr><td><code>"auto"</code></td><td>Automatic rate (= 1.0, native currency = Options currency)</td></tr>
-    <tr><td><code>"manual"</code></td><td>Manually entered rate (never overwritten automatically)</td></tr>
-    <tr><td><code>"ko"</code></td><td>Stale rate (date or currency changed since last sync)</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>null</code></td>
+<td>No rate entered</td>
+</tr>
+<tr>
+<td><code>"ok"</code></td>
+<td>Frankfurter rate up to date</td>
+</tr>
+<tr>
+<td><code>"auto"</code></td>
+<td>Automatic rate (= 1.0, native currency = Options currency)</td>
+</tr>
+<tr>
+<td><code>"manual"</code></td>
+<td>Manually entered rate (never overwritten automatically)</td>
+</tr>
+<tr>
+<td><code>"ko"</code></td>
+<td>Stale rate (date or currency changed since last sync)</td>
+</tr>
+</tbody>
 </table>
-
 <p><strong><code>fxRateSource</code> values (History):</strong> the History tab uses a separate vocabulary — <code>null</code> (no rate), <code>"frankfurter"</code> (rate at Dec 31 of the row's year), <code>"today"</code> (current-year rate at today's date), <code>"auto"</code> (row currency = Options currency, rate = 1.0), <code>"manual"</code> (manually entered), <code>"ko"</code> (stale rate after a year or currency change).</p>
-
 <h3>Recommended backup</h3>
 <p>The JSON file can be copied, versioned (git), or exported from the Options tab. It is human-readable and can be edited manually if needed.</p>
-
-<hr>
-
-<a id="15-csv-export"></a>
-
+<hr />
+<p><a id="15-csv-export"></a></p>
 <h2>15. CSV export</h2>
-
 <h3>Overview</h3>
-<p>The <strong>Export</strong> button in the Options tab generates a timestamped ZIP file (<code>export_YYYYMMDD.zip</code>) downloadable directly from the browser. The ZIP contains 6 CSV files, one per data type plus a consolidated summary.</p>
-
-<p>No external dependency: the export uses only the Python standard library (<code>csv</code>, <code>zipfile</code>, <code>io</code>).</p>
-
+<p>The <strong>Export</strong> button in the Options tab generates a timestamped ZIP file
+(<code>export_YYYYMMDD.zip</code>) downloadable directly from the browser.
+The ZIP contains 6 CSV files, one per data type plus a consolidated summary.</p>
+<p>No external dependency: the export uses only the Python standard
+library (<code>csv</code>, <code>zipfile</code>, <code>io</code>).</p>
 <h3>Generated files</h3>
-
 <table>
-  <thead><tr><th>File</th><th>Content</th></tr></thead>
-  <tbody>
-    <tr><td><code>securities_live.csv</code></td><td>Active Securities positions with individual purchase detail</td></tr>
-    <tr><td><code>cryptos_live.csv</code></td><td>Active Crypto positions with individual purchase detail</td></tr>
-    <tr><td><code>securities_sales.csv</code></td><td>Securities sales (realized trades)</td></tr>
-    <tr><td><code>cryptos_sales.csv</code></td><td>Crypto sales (realized trades)</td></tr>
-    <tr><td><code>history.csv</code></td><td>Annual portfolio history</td></tr>
-    <tr><td><code>summary.csv</code></td><td>Consolidated KPIs across all tabs, in the Options currency</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>File</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>securities_live.csv</code></td>
+<td>Active Securities positions with individual purchase detail</td>
+</tr>
+<tr>
+<td><code>cryptos_live.csv</code></td>
+<td>Active Crypto positions with individual purchase detail</td>
+</tr>
+<tr>
+<td><code>securities_sales.csv</code></td>
+<td>Securities sales (realized trades)</td>
+</tr>
+<tr>
+<td><code>cryptos_sales.csv</code></td>
+<td>Crypto sales (realized trades)</td>
+</tr>
+<tr>
+<td><code>history.csv</code></td>
+<td>Annual portfolio history</td>
+</tr>
+<tr>
+<td><code>summary.csv</code></td>
+<td>Consolidated KPIs across all tabs, in the Options currency</td>
+</tr>
+</tbody>
 </table>
-
 <h3>Live file structure (Securities and Crypto)</h3>
-
-<p>The <code>securities_live.csv</code> and <code>cryptos_live.csv</code> files use a two-level row structure, identified by the <code>row_type</code> column:</p>
-
+<p>The <code>securities_live.csv</code> and <code>cryptos_live.csv</code> files use a two-level
+row structure, identified by the <code>row_type</code> column:</p>
 <table>
-  <thead><tr><th><code>row_type</code> value</th><th>Meaning</th></tr></thead>
-  <tbody>
-    <tr><td><code>position</code></td><td>Position summary row (native WAC, Options-currency cost basis, invested, valuation, P&amp;L, change%, weight%)</td></tr>
-    <tr><td><code>purchase</code></td><td>Individual purchase-lot detail row (including the lot's date and historical FX rate)</td></tr>
-    <tr><td><em>(empty)</em></td><td>Separator row between positions (all cells empty, including <code>row_type</code>)</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th><code>row_type</code> value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>position</code></td>
+<td>Position summary row (native WAC, Options-currency cost basis, invested, valuation, P&amp;L, change%, weight%)</td>
+</tr>
+<tr>
+<td><code>purchase</code></td>
+<td>Individual purchase-lot detail row (including the lot's date and historical FX rate)</td>
+</tr>
+<tr>
+<td><em>(empty)</em></td>
+<td>Separator row between positions (all cells empty, including <code>row_type</code>)</td>
+</tr>
+</tbody>
 </table>
-
-<blockquote><p><strong>Note:</strong> <code>live_price</code> is rounded to 2 decimal places in the export.</p></blockquote>
-
-<blockquote><p><strong>V2.0 columns.</strong> Position rows now carry both <code>qty_total</code> (bought) and <code>qty_remaining</code> (still held), the native <code>wac</code>, the Options-currency cost basis <code>wac_base</code> with its <code>wac_base_currency</code>, and <code>invested_remaining</code> (cost basis of the held quantity, in the Options currency). Purchase rows now carry <code>purchase_fx_rate</code> and <code>purchase_fx_rate_source</code> (the lot's historical rate).</p></blockquote>
-
-<blockquote><p><strong>Percentage columns:</strong> <code>change_pct</code>, <code>weight_pct</code> and <code>pnl_pct</code> are stored as percentages (value already multiplied by 100) rounded to <strong>1 decimal place</strong> — e.g. <code>45.5</code>, <code>-17.9</code>, <code>25.6</code>. They are not raw ratios.</p></blockquote>
-
-<p>The columns follow the same left-to-right reading order as the UI: identity first, then base amounts (quantity, average cost, invested), then the live price, then the consolidated block (valuation, change, P&amp;L, weight), then price metadata, and finally the per-lot purchase detail.</p>
-
+<blockquote>
+<p><strong>Note:</strong> <code>live_price</code> is rounded to 2 decimal places in the export.</p>
+<p><strong>Quantity and cost-basis columns.</strong> Position rows carry both <code>qty_total</code> (bought) and <code>qty_remaining</code> (still held), the native <code>wac</code>, the Options-currency cost basis <code>wac_base</code> with its <code>wac_base_currency</code>, and <code>invested_remaining</code> (cost basis of the held quantity, in the Options currency). Purchase rows carry <code>purchase_fx_rate</code> and <code>purchase_fx_rate_source</code> (the lot's historical rate).</p>
+<p><strong>Percentage columns:</strong> <code>change_pct</code>, <code>weight_pct</code> and <code>pnl_pct</code> are stored as
+percentages (value already multiplied by 100) rounded to <strong>1 decimal place</strong> —
+e.g. <code>45.5</code>, <code>-17.9</code>, <code>25.6</code>. They are not raw ratios.</p>
+</blockquote>
+<p>The columns follow the same left-to-right reading order as the UI: identity
+first, then base amounts (quantity, average cost, invested), then the live
+price, then the consolidated block (valuation, change, P&amp;L, weight), then price
+metadata, and finally the per-lot purchase detail.</p>
 <h3>Columns per file</h3>
-
 <p><strong><code>securities_live.csv</code></strong> — 29 columns</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>row_type</code></td></tr>
-    <tr><td>2</td><td><code>id</code></td></tr>
-    <tr><td>3</td><td><code>name</code></td></tr>
-    <tr><td>4</td><td><code>isin</code></td></tr>
-    <tr><td>5</td><td><code>ticker</code></td></tr>
-    <tr><td>6</td><td><code>broker</code></td></tr>
-    <tr><td>7</td><td><code>class</code></td></tr>
-    <tr><td>8</td><td><code>currency</code></td></tr>
-    <tr><td>9</td><td><code>qty_total</code></td></tr>
-    <tr><td>10</td><td><code>qty_remaining</code></td></tr>
-    <tr><td>11</td><td><code>wac</code></td></tr>
-    <tr><td>12</td><td><code>wac_base</code></td></tr>
-    <tr><td>13</td><td><code>wac_base_currency</code></td></tr>
-    <tr><td>14</td><td><code>invested_remaining</code></td></tr>
-    <tr><td>15</td><td><code>live_price</code></td></tr>
-    <tr><td>16</td><td><code>valuation</code></td></tr>
-    <tr><td>17</td><td><code>change_pct</code></td></tr>
-    <tr><td>18</td><td><code>pnl</code></td></tr>
-    <tr><td>19</td><td><code>weight_pct</code></td></tr>
-    <tr><td>20</td><td><code>price_source</code></td></tr>
-    <tr><td>21</td><td><code>price_date</code></td></tr>
-    <tr><td>22</td><td><code>purchase_date</code></td></tr>
-    <tr><td>23</td><td><code>purchase_qty</code></td></tr>
-    <tr><td>24</td><td><code>purchase_price</code></td></tr>
-    <tr><td>25</td><td><code>purchase_fees</code></td></tr>
-    <tr><td>26</td><td><code>purchase_fx_rate</code></td></tr>
-    <tr><td>27</td><td><code>purchase_fx_rate_source</code></td></tr>
-    <tr><td>28</td><td><code>purchase_total_invested</code></td></tr>
-    <tr><td>29</td><td><code>purchase_lot_avg_cost</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>row_type</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>id</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>name</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>isin</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>ticker</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>broker</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>class</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>currency</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>qty_total</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>qty_remaining</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>wac</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>wac_base</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>wac_base_currency</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>invested_remaining</code></td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>live_price</code></td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>valuation</code></td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>change_pct</code></td>
+</tr>
+<tr>
+<td>18</td>
+<td><code>pnl</code></td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>weight_pct</code></td>
+</tr>
+<tr>
+<td>20</td>
+<td><code>price_source</code></td>
+</tr>
+<tr>
+<td>21</td>
+<td><code>price_date</code></td>
+</tr>
+<tr>
+<td>22</td>
+<td><code>purchase_date</code></td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>purchase_qty</code></td>
+</tr>
+<tr>
+<td>24</td>
+<td><code>purchase_price</code></td>
+</tr>
+<tr>
+<td>25</td>
+<td><code>purchase_fees</code></td>
+</tr>
+<tr>
+<td>26</td>
+<td><code>purchase_fx_rate</code></td>
+</tr>
+<tr>
+<td>27</td>
+<td><code>purchase_fx_rate_source</code></td>
+</tr>
+<tr>
+<td>28</td>
+<td><code>purchase_total_invested</code></td>
+</tr>
+<tr>
+<td>29</td>
+<td><code>purchase_lot_avg_cost</code></td>
+</tr>
+</tbody>
 </table>
-
 <p><strong><code>cryptos_live.csv</code></strong> — 26 columns</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>row_type</code></td></tr>
-    <tr><td>2</td><td><code>id</code></td></tr>
-    <tr><td>3</td><td><code>name</code></td></tr>
-    <tr><td>4</td><td><code>ticker</code></td></tr>
-    <tr><td>5</td><td><code>currency</code></td></tr>
-    <tr><td>6</td><td><code>qty_total</code></td></tr>
-    <tr><td>7</td><td><code>qty_remaining</code></td></tr>
-    <tr><td>8</td><td><code>wac</code></td></tr>
-    <tr><td>9</td><td><code>wac_base</code></td></tr>
-    <tr><td>10</td><td><code>wac_base_currency</code></td></tr>
-    <tr><td>11</td><td><code>invested_remaining</code></td></tr>
-    <tr><td>12</td><td><code>live_price</code></td></tr>
-    <tr><td>13</td><td><code>valuation</code></td></tr>
-    <tr><td>14</td><td><code>change_pct</code></td></tr>
-    <tr><td>15</td><td><code>pnl</code></td></tr>
-    <tr><td>16</td><td><code>weight_pct</code></td></tr>
-    <tr><td>17</td><td><code>price_source</code></td></tr>
-    <tr><td>18</td><td><code>price_date</code></td></tr>
-    <tr><td>19</td><td><code>purchase_date</code></td></tr>
-    <tr><td>20</td><td><code>purchase_qty</code></td></tr>
-    <tr><td>21</td><td><code>purchase_price</code></td></tr>
-    <tr><td>22</td><td><code>purchase_fees</code></td></tr>
-    <tr><td>23</td><td><code>purchase_fx_rate</code></td></tr>
-    <tr><td>24</td><td><code>purchase_fx_rate_source</code></td></tr>
-    <tr><td>25</td><td><code>purchase_total_invested</code></td></tr>
-    <tr><td>26</td><td><code>purchase_lot_avg_cost</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>row_type</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>id</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>name</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>ticker</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>currency</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>qty_total</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>qty_remaining</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>wac</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>wac_base</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>wac_base_currency</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>invested_remaining</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>live_price</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>valuation</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>change_pct</code></td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>pnl</code></td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>weight_pct</code></td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>price_source</code></td>
+</tr>
+<tr>
+<td>18</td>
+<td><code>price_date</code></td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>purchase_date</code></td>
+</tr>
+<tr>
+<td>20</td>
+<td><code>purchase_qty</code></td>
+</tr>
+<tr>
+<td>21</td>
+<td><code>purchase_price</code></td>
+</tr>
+<tr>
+<td>22</td>
+<td><code>purchase_fees</code></td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>purchase_fx_rate</code></td>
+</tr>
+<tr>
+<td>24</td>
+<td><code>purchase_fx_rate_source</code></td>
+</tr>
+<tr>
+<td>25</td>
+<td><code>purchase_total_invested</code></td>
+</tr>
+<tr>
+<td>26</td>
+<td><code>purchase_lot_avg_cost</code></td>
+</tr>
+</tbody>
 </table>
-
 <h3>Sales file structure (Securities and Crypto)</h3>
-
-<p>The <code>securities_sales.csv</code> and <code>cryptos_sales.csv</code> files list one row per realized trade. The raw sell-side columns hold the trade data (in native currency); <code>avg_cost_at_sale</code> and the last four columns are <strong>computed at export time</strong>.</p>
-
-<blockquote><p><strong>Cost basis computed at export.</strong> Since V2.0 a sale no longer stores a frozen buy average cost. <code>avg_cost_at_sale</code> is <strong>recomputed at export</strong> as the dated cost basis — the weighted average cost of the position's lots dated on or before the sell date, in the Options currency (see <a href="#12-calculations">section 12</a>). It is <strong>left empty</strong> when the position was deleted (<code>pos_id</code> empty), has no lot on or before the sell date, or a relevant lot's FX rate is unresolved. <code>pos_id</code> links the sale back to its position of origin (empty if that position no longer exists).</p></blockquote>
-
-<blockquote><p><strong>Computed columns.</strong> <code>total_buy_&lt;CCY&gt;</code>, <code>total_sell_&lt;CCY&gt;</code> and <code>pnl_&lt;CCY&gt;</code> carry the Options currency code in uppercase (e.g. <code>total_buy_EUR</code> when the Options currency is EUR). They are expressed in the Options currency using the sale's sell-date FX rate together with the dated cost basis. They — and <code>pnl_pct</code> — are <strong>left empty</strong> whenever <code>fxRateSell</code> is unresolved <strong>or</strong> the dated cost basis is unavailable, consistent with the <code>—</code> shown in the UI. <code>pnl_pct</code> has no currency suffix (it is <code>pnl_&lt;CCY&gt; / total_buy_&lt;CCY&gt;</code>, rounded to 1 decimal place).</p></blockquote>
-
+<p>The <code>securities_sales.csv</code> and <code>cryptos_sales.csv</code> files list one row per
+realized trade. The raw sell-side columns hold the trade data (in native
+currency); <code>avg_cost_at_sale</code> and the last four columns are <strong>computed at export
+time</strong>.</p>
+<blockquote>
+<p><strong>Identity columns follow the position.</strong> <code>name</code>, <code>ticker</code> and <code>isin</code> are read
+from the position referenced by <code>pos_id</code>, so they always match what the
+<code>*_live.csv</code> files show for the same position — the ZIP never names one
+position two different ways. A sale whose position was deleted falls back to
+the identity stored on the sale itself.</p>
+<p><strong>Archived positions are exported like any other</strong>, rows and purchase lots
+included. Leaving them out would produce sales whose <code>avg_cost_at_sale</code> is
+computed from lots absent from the same ZIP. There is no <code>archived</code> column:
+archiving changes no figure, and a fully sold position that has not been
+archived is already indistinguishable from one that has.</p>
+<p><strong>Cost basis computed at export.</strong> A sale stores no frozen buy average cost.
+<code>avg_cost_at_sale</code> is <strong>recomputed at export</strong> as the dated
+cost basis — the weighted average cost of the position's lots dated on or before
+the sell date, in the Options currency (see <a href="#12-calculations">section 12</a>). It
+is <strong>left empty</strong> when the position was deleted (<code>pos_id</code> empty), has no lot on
+or before the sell date, or a relevant lot's FX rate is unresolved. <code>pos_id</code>
+links the sale back to its position of origin (empty if that position no longer
+exists).</p>
+<p><strong>Computed columns.</strong> <code>total_buy_&lt;CCY&gt;</code>, <code>total_sell_&lt;CCY&gt;</code> and <code>pnl_&lt;CCY&gt;</code>
+carry the Options currency code in uppercase (e.g. <code>total_buy_EUR</code> when the
+Options currency is EUR). They are expressed in the Options currency using the
+sale's sell-date FX rate together with the dated cost basis. They — and
+<code>pnl_pct</code> — are <strong>left empty</strong> whenever <code>fxRateSell</code> is unresolved <strong>or</strong> the
+dated cost basis is unavailable, consistent with the <code>—</code> shown in the UI.
+<code>pnl_pct</code> has no currency suffix (it is <code>pnl_&lt;CCY&gt; / total_buy_&lt;CCY&gt;</code>, rounded
+to 1 decimal place).</p>
+</blockquote>
 <p><strong><code>securities_sales.csv</code></strong> — 17 columns (12 sell-side/identity + <code>avg_cost_at_sale</code> + 4 computed)</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>id</code></td></tr>
-    <tr><td>2</td><td><code>name</code></td></tr>
-    <tr><td>3</td><td><code>ticker</code></td></tr>
-    <tr><td>4</td><td><code>isin</code></td></tr>
-    <tr><td>5</td><td><code>currency</code></td></tr>
-    <tr><td>6</td><td><code>pos_id</code></td></tr>
-    <tr><td>7</td><td><code>avg_cost_at_sale</code></td></tr>
-    <tr><td>8</td><td><code>sellDate</code></td></tr>
-    <tr><td>9</td><td><code>qSold</code></td></tr>
-    <tr><td>10</td><td><code>priceSell</code></td></tr>
-    <tr><td>11</td><td><code>feesSell</code></td></tr>
-    <tr><td>12</td><td><code>fxRateSell</code></td></tr>
-    <tr><td>13</td><td><code>fxRateSellSource</code></td></tr>
-    <tr><td>14</td><td><code>total_buy_&lt;CCY&gt;</code></td></tr>
-    <tr><td>15</td><td><code>total_sell_&lt;CCY&gt;</code></td></tr>
-    <tr><td>16</td><td><code>pnl_&lt;CCY&gt;</code></td></tr>
-    <tr><td>17</td><td><code>pnl_pct</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>id</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>name</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>ticker</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>isin</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>currency</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>pos_id</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>avg_cost_at_sale</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>sellDate</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>qSold</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>priceSell</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>feesSell</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>fxRateSell</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>fxRateSellSource</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>total_buy_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>total_sell_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>pnl_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>pnl_pct</code></td>
+</tr>
+</tbody>
 </table>
-
 <p><strong><code>cryptos_sales.csv</code></strong> — 15 columns</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>id</code></td></tr>
-    <tr><td>2</td><td><code>name</code></td></tr>
-    <tr><td>3</td><td><code>currency</code></td></tr>
-    <tr><td>4</td><td><code>pos_id</code></td></tr>
-    <tr><td>5</td><td><code>avg_cost_at_sale</code></td></tr>
-    <tr><td>6</td><td><code>sellDate</code></td></tr>
-    <tr><td>7</td><td><code>qSold</code></td></tr>
-    <tr><td>8</td><td><code>priceSell</code></td></tr>
-    <tr><td>9</td><td><code>feesSell</code></td></tr>
-    <tr><td>10</td><td><code>fxRateSell</code></td></tr>
-    <tr><td>11</td><td><code>fxRateSellSource</code></td></tr>
-    <tr><td>12</td><td><code>total_buy_&lt;CCY&gt;</code></td></tr>
-    <tr><td>13</td><td><code>total_sell_&lt;CCY&gt;</code></td></tr>
-    <tr><td>14</td><td><code>pnl_&lt;CCY&gt;</code></td></tr>
-    <tr><td>15</td><td><code>pnl_pct</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>id</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>name</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>currency</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>pos_id</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>avg_cost_at_sale</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>sellDate</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>qSold</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>priceSell</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>feesSell</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>fxRateSell</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>fxRateSellSource</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>total_buy_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>total_sell_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>pnl_&lt;CCY&gt;</code></td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>pnl_pct</code></td>
+</tr>
+</tbody>
 </table>
-
-<blockquote><p><strong>Note:</strong> <code>cryptos_sales.csv</code> has no <code>ticker</code> or <code>isin</code> column — a crypto sale inherits its currency from its position.</p></blockquote>
-
+<blockquote>
+<p><strong>Note:</strong> <code>cryptos_sales.csv</code> has no <code>ticker</code> or <code>isin</code> column — a crypto sale
+inherits its currency from its position.</p>
+</blockquote>
 <p><strong><code>history.csv</code></strong> — dynamic columns</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>year</code></td></tr>
-    <tr><td>2</td><td><code>currency</code></td></tr>
-    <tr><td>3</td><td><code>fxRate</code></td></tr>
-    <tr><td>4</td><td><code>fxRateSource</code></td></tr>
-    <tr><td>5</td><td><code>securities</code></td></tr>
-    <tr><td>6</td><td><code>crypto</code></td></tr>
-    <tr><td>7</td><td><code>total</code></td></tr>
-    <tr><td>8+</td><td><code>class_&lt;key&gt;</code> (one column per asset class, keys sorted alphabetically)</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>year</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>currency</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>fxRate</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>fxRateSource</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>securities</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>crypto</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>total</code></td>
+</tr>
+<tr>
+<td>8+</td>
+<td><code>class_&lt;key&gt;</code> (one column per asset class, keys sorted alphabetically)</td>
+</tr>
+</tbody>
 </table>
-
-<p><code>currency</code> is injected from the settings (<code>settings.currency</code>). The <code>class_&lt;key&gt;</code> columns are generated dynamically from the union of all <code>classes</code> keys present across every history row, sorted alphabetically, and appended after the 7 fixed columns.</p>
-
+<p><code>currency</code> is injected from the settings (<code>settings.currency</code>). The <code>class_&lt;key&gt;</code>
+columns are generated dynamically from the union of all <code>classes</code> keys present
+across every history row, sorted alphabetically, and appended after the 7 fixed
+columns.</p>
 <p><strong><code>summary.csv</code></strong> — 3 columns, 9 rows</p>
-
 <p>Consolidated KPIs across all tabs, all expressed in the Options currency.</p>
-
 <table>
-  <thead><tr><th>#</th><th>Column</th></tr></thead>
-  <tbody>
-    <tr><td>1</td><td><code>metric</code></td></tr>
-    <tr><td>2</td><td><code>value</code></td></tr>
-    <tr><td>3</td><td><code>currency</code></td></tr>
-  </tbody>
+<thead>
+<tr>
+<th>#</th>
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>metric</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>value</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>currency</code></td>
+</tr>
+</tbody>
 </table>
-
-<p>The <code>currency</code> column repeats the Options currency code in uppercase (e.g. <code>EUR</code>) on every row. The nine <code>metric</code> rows, in order:</p>
-
+<p>The <code>currency</code> column repeats the Options currency code in uppercase (e.g. <code>EUR</code>)
+on every row. The nine <code>metric</code> rows, in order:</p>
 <table>
-  <thead><tr><th><code>metric</code></th><th>Meaning</th></tr></thead>
-  <tbody>
-    <tr><td><code>total_valuation</code></td><td>Dashboard total valuation (all live positions)</td></tr>
-    <tr><td><code>securities_invested</code></td><td>Securities tab — total invested</td></tr>
-    <tr><td><code>securities_valuation</code></td><td>Securities tab — total valuation</td></tr>
-    <tr><td><code>securities_pnl</code></td><td>Securities tab — P&amp;L</td></tr>
-    <tr><td><code>securities_realized_pnl</code></td><td>Securities Sales — realized P&amp;L</td></tr>
-    <tr><td><code>cryptos_invested</code></td><td>Cryptos tab — total invested</td></tr>
-    <tr><td><code>cryptos_valuation</code></td><td>Cryptos tab — total valuation</td></tr>
-    <tr><td><code>cryptos_pnl</code></td><td>Cryptos tab — P&amp;L</td></tr>
-    <tr><td><code>cryptos_realized_pnl</code></td><td>Crypto Sales — realized P&amp;L</td></tr>
-  </tbody>
+<thead>
+<tr>
+<th><code>metric</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total_valuation</code></td>
+<td>Dashboard total valuation (all live positions)</td>
+</tr>
+<tr>
+<td><code>securities_invested</code></td>
+<td>Securities tab — total invested</td>
+</tr>
+<tr>
+<td><code>securities_valuation</code></td>
+<td>Securities tab — total valuation</td>
+</tr>
+<tr>
+<td><code>securities_pnl</code></td>
+<td>Securities tab — P&amp;L</td>
+</tr>
+<tr>
+<td><code>securities_realized_pnl</code></td>
+<td>Securities Sales — realized P&amp;L</td>
+</tr>
+<tr>
+<td><code>cryptos_invested</code></td>
+<td>Cryptos tab — total invested</td>
+</tr>
+<tr>
+<td><code>cryptos_valuation</code></td>
+<td>Cryptos tab — total valuation</td>
+</tr>
+<tr>
+<td><code>cryptos_pnl</code></td>
+<td>Cryptos tab — P&amp;L</td>
+</tr>
+<tr>
+<td><code>cryptos_realized_pnl</code></td>
+<td>Crypto Sales — realized P&amp;L</td>
+</tr>
+</tbody>
 </table>
-
-<p><code>total_valuation</code> equals <code>securities_valuation + cryptos_valuation</code>. Each value is computed using the same conversion logic as the Dashboard and per-tab KPIs (see <a href="#12-calculations">section 12</a>): positions without a live price or without an available FX rate are excluded, and realized P&amp;L sums only the sales whose sell-date FX rate and dated cost basis are both available.</p>
-
+<p><code>total_valuation</code> equals <code>securities_valuation + cryptos_valuation</code>. Each value
+is computed using the same conversion logic as the Dashboard and per-tab KPIs
+(see <a href="#12-calculations">section 12</a>): positions without a live price or without an
+available FX rate are excluded, and realized P&amp;L sums only the sales whose sell-date
+FX rate and dated cost basis are both available.</p>
+<hr />
+<p><a id="16-info-tab"></a></p>
+<h2>16. Info tab</h2>
+<p>A short reference card: version and release date, author, the GitHub repository and the license. The <strong>📖 Documentation</strong> button opens this documentation in a new browser tab.</p>
+<hr />
+<p><em>Portfolio Tracker v2.0 — July 2026</em></p>
 <hr>
 
-<p style="font-size:13px;color:#9ca3af;text-align:center;margin-top:40px">Portfolio Tracker v2.0 — 2026/07/22</p>
+<p style="font-size:13px;color:#9ca3af;text-align:center;margin-top:40px">Portfolio Tracker v2.0 — 2026/07/27</p>
 
 </div>
 </body>
