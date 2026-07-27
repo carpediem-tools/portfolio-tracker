@@ -934,6 +934,24 @@ function shouldShowFxBanner(){
   if((DATA.cryptoTrades||[]).some(t=>t.fxRateSell==null||t.fxRateSellSource==='ko'))return true;
   return false;
 }
+// [v2.2] hasArchivedFxCulprit — fonction DE TEXTE, jamais de déclenchement. Évaluée UNIQUEMENT
+// quand shouldShowFxBanner() est déjà vrai, elle dit si un déclencheur des conditions 2 ou 3 porte
+// sur une position archivée. Elle ne peut ni allumer ni éteindre le bandeau : si elle finit par
+// conditionner un affichage, c'est qu'elle a été mal placée.
+// Motif : un lot resté 'ko' après un échec Frankfurter (date < 1999, erreur API) le reste
+// indéfiniment sur une archivée, le gel fermant la popup où le taux se saisit à la main. Le texte
+// générique est alors doublement trompeur — il recommande une sync qui a déjà échoué et tait le
+// seul recours existant (restaurer).
+// Branche positions : `p.archived === true` lu directement, l'objet est en main — un posById
+// serait un détour. Branche cessions : isPosArchived (Sales v3.2). Les deux formes sont la MÊME
+// expression, pas deux prédicats concurrents. Court-circuit au premier true.
+function hasArchivedFxCulprit(){
+  if((DATA.cto||[]).some(p=>p.archived===true&&calcPos(p,DATA.ctoTrades).wacBase==null))return true;
+  if((DATA.crypto||[]).some(p=>p.archived===true&&calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
+  if((DATA.ctoTrades||[]).some(t=>(t.fxRateSell==null||t.fxRateSellSource==='ko')&&isPosArchived('cto',t.posId)))return true;
+  if((DATA.cryptoTrades||[]).some(t=>(t.fxRateSell==null||t.fxRateSellSource==='ko')&&isPosArchived('crypto',t.posId)))return true;
+  return false;
+}
 // [v3.1] shouldShowOrphanBanner — bandeau « coût de base incalculable », DISTINCT et INDÉPENDANT
 // des bandeaux FX et temporel (les trois peuvent coexister). true si au moins une cession (cto ou
 // crypto) a tb == null : cession orpheline (position supprimée) ou aucun lot d'achat à la date de
@@ -961,8 +979,20 @@ function shouldShowTemporalBanner(){
 }
 function renderDash(){
   const displayCur=getCur().code;
-  const ctoC=DATA.cto.map(p=>({...p,c:calcPos(p,DATA.ctoTrades)}));
-  const crC=DATA.crypto.map(p=>({...p,c:calcPos(p,DATA.cryptoTrades)}));
+  // [v2.2] Archivées exclues À LA SOURCE, une seule fois : tout ce qui dérive de ctoC/crC — total,
+  // répartitions par classe, non classées, cryptos, brokers, camemberts, excludedCount — en hérite
+  // sans filtre supplémentaire. Ne pas disséminer le test dans chaque agrégat.
+  // L'exclusion ne change AUCUN montant : l'éligibilité à l'archivage exige remaining nul, donc
+  // valo nulle, donc un terme qui vaut déjà zéro dans toutes les sommes. Sa seule conséquence
+  // observable est excludedCount — une archivée conserve son livePrice (gelé, la sync des prix la
+  // saute) et sa currency, donc valoOk est vrai, donc convertValo appelle convert(0, …), et convert
+  // teste le TAUX avant le montant : taux manquant ⇒ null ⇒ excludedCount++, même pour zéro. Le
+  // Dashboard annonçait alors « N without currency or FX » en désignant une position que
+  // l'utilisateur ne voit nulle part (segment Archived) et ne peut pas corriger (gelée). Aucun
+  // résidu flottant n'est nécessaire pour l'atteindre : un changement de devise de reporting
+  // invalide les taux de tout le monde.
+  const ctoC=DATA.cto.filter(p=>p.archived!==true).map(p=>({...p,c:calcPos(p,DATA.ctoTrades)}));
+  const crC=DATA.crypto.filter(p=>p.archived!==true).map(p=>({...p,c:calcPos(p,DATA.cryptoTrades)}));
   // Conversion de chaque valo vers la devise Options
   function convertValo(p,c){
     if(!p.livePrice||!p.currency)return null;
@@ -995,6 +1025,11 @@ function renderDash(){
     if(v!=null)bmap[b]=(bmap[b]||0)+v;
   });
   const bPie=Object.entries(bmap).map(([name,valo])=>({name,valo}));
+  // [v2.2] Le `&&` porte l'invariant : hasArchivedFxCulprit n'est évaluée que si le bandeau est
+  // DÉJÀ déclenché, et ne pilote qu'une phrase. Corollaire gratuit : la mention n'apparaît pas
+  // quand la seule cause est la condition 1 (fxRates vide), qui n'a aucun coupable identifiable.
+  const fxBanner=shouldShowFxBanner();
+  const fxArchivedNote=fxBanner&&hasArchivedFxCulprit();
   const sorted=[...DATA.historique].sort((a,b)=>a.year-b.year);
   const _maxYear=sorted.length?Math.max(...sorted.map(h=>h.year)):0;
   const _filterN=dashChartFilter==='5Y'?5:dashChartFilter==='10Y'?10:dashChartFilter==='15Y'?15:Infinity;
@@ -1023,8 +1058,9 @@ function renderDash(){
       <div class="kpi-value" style="color:var(--orange);font-size:14px">${excludedCount} without currency or FX</div>
     </div>`:''}
   </div>
-  ${shouldShowFxBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
-    ⚠️ Some FX rates are missing — a sync is recommended.
+  ${fxBanner?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
+    ⚠️ Some FX rates are missing — a sync is recommended.${fxArchivedNote
+      ?` Some of them belong to archived positions — restore the position to enter a rate manually.`:''}
   </div>`:''}
   ${shouldShowTemporalBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
     ⚠️ Some positions have a negative stock at some point in time — check your buys and sales.
