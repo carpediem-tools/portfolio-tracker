@@ -10,20 +10,29 @@ No cloud. No account. No subscription.
 - **Securities** — open positions with purchase history, weighted average
   cost, live valuation, P&L and weight per position
 - **Crypto positions** — same logic
+- **Position archiving** — fully sold positions can be archived: they leave
+  the active views and the dashboard aggregates, stop being price-synced and
+  are frozen against edits, while their sales history stays intact and
+  exportable. Reversible at any time
 - **Multi-currency** — EUR, USD, CHF, GBP, JPY, HKD and CNY supported;
   all values consolidated into a chosen reporting currency
 - **Live price sync** — stock prices via Yahoo Finance (also used for daily
   FX rates); crypto prices via CoinGecko public API — all free, no API key
   required; one-click Sync all covers prices and FX in one shot
-- **Sales tracking** — realized P&L for both Securities and Crypto
-  disposals, with historical FX rates at transaction date (Frankfurter / ECB)
-- **Dashboard** — total valuation, pie charts by asset class / broker /
-  position, annual trend chart and year-over-year snapshot
-  (Securities + Cryptos + Total)
+- **Sales tracking** — realized P&L for both Securities and Crypto disposals,
+  with a cost basis derived from the purchase lots actually held at the sale
+  date, and historical FX rates at transaction date (Frankfurter / ECB)
+- **Dashboard** — four consolidated KPIs (invested, valuation, P&L and P&L %,
+  mirrored in the Securities and Cryptos tabs), pie charts by asset class /
+  broker / position, annual trend chart and year-over-year snapshot
+  (Securities + Cryptos + Total), plus consistency banners flagging missing
+  FX rates, negative stock and uncomputable cost basis
 - **Portfolio history** — manual annual snapshots with Dec 31 FX rates
   (Frankfurter / ECB); fixed columns Securities + Cryptos; sortable by year
 - **Fully configurable** — brokers and asset classes defined freely
   in Options
+- **Three interface themes** — Terminal Pro, Private Bank and Bold Modern,
+  switchable in Options
 - **CSV export** — timestamped ZIP with 6 CSV files (positions, sales,
   history and consolidated summary); computed P&L columns included;
   no external dependency
