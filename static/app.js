@@ -25,7 +25,9 @@ function strictNum(str){
 // Toute modification des devises acceptées ou de la logique de parsing
 // doit être répercutée manuellement dans les deux fichiers.
 let DATA=null,currentTab='dashboard',expanded={},pendingSettings=null,saveErrorMsg=null;
-// Sous-vue par écran d'actifs (remplace les onglets Sales) : 'positions' | 'sales'
+// Sous-vue par écran d'actifs (remplace les onglets Sales) : 'positions' | 'archived' | 'sales'
+// [v4.0] Troisième valeur 'archived'. État non persisté, propre à chaque onglet, réinitialisé
+// à 'positions' au rechargement de la page.
 let spotView={cto:'positions',crypto:'positions'};
 let optNewBroker='',optNewBrokerErr=null,optNewClass='',optNewClassErr=null;
 let optShowNewBroker=false,optShowNewClass=false;
@@ -462,6 +464,26 @@ function calcPos(p,trades=[]){
   const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
   return{tq,ti,wac,wacBase,wacBaseAt,soldQty,remaining,soldeMin,breachDate,investedRemaining,valo,gp,evol};
 }
+// [v4.0] Tolérance flottante de l'éligibilité à l'archivage — couvre les 8 décimales des
+// quantités crypto. `remaining` et `soldeMin` sont des sommes de flottants : une position
+// réellement soldée vaut 5.5e-17, jamais 0.
+const CLOSED_EPS=1e-9;
+// [v4.0] isClosed — prédicat UNIQUE d'éligibilité à l'archivage (spec Securities v4.0 §4.9bis).
+// Source unique du badge « Closed » ET de la garde de archivePos : ne JAMAIS réécrire le test
+// ailleurs (deux tests séparés dérivent, et un badge affiché sur une ligne que le bouton refuse
+// est exactement l'incohérence muette que l'ergonomie « bouton actionnable + refus explicite »
+// cherche à éviter).
+//   - jamais `remaining === 0` : égalité flottante, refuserait une ligne affichée à zéro ;
+//   - jamais `soldeMin >= 0`   : soldeMin est un MINIMUM initialisé à 0 sur des sommes de
+//     flottants — son résidu est TOUJOURS du mauvais côté, le test échouerait systématiquement
+//     sur toute position à décimales longues. Même ε, testé en `> -CLOSED_EPS`.
+// Le second test n'est pas un raffinement du premier : « globalement soldé, localement négatif »
+// (remaining nul, soldeMin < 0) est un cas réel, non archivable.
+function isClosed(p,trades){
+  if(!p)return false;
+  const c=calcPos(p,trades||[]);
+  return Math.abs(c.remaining)<CLOSED_EPS&&c.remaining>-CLOSED_EPS&&c.soldeMin>-CLOSED_EPS;
+}
 // [v3.0] Coût de base DATÉ d'une cession — délègue à calcPos(pos).wacBaseAt(date).
 // pos peut être null (position orpheline) → null. Ne dépend que des lots d'achat, jamais des
 // cessions (d'où trades=[]) : recalculé à chaque rendu, jamais figé sur la cession.
@@ -505,15 +527,25 @@ function render(){
   const app=document.getElementById('app');
   if(currentTab==='options')       app.innerHTML=renderOptions();
   else if(currentTab==='dashboard')     app.innerHTML=renderDash();
-  else if(currentTab==='cto')      app.innerHTML=spotView.cto==='sales'?renderES('cto'):renderSpot('cto');
-  else if(currentTab==='crypto')   app.innerHTML=spotView.crypto==='sales'?renderES('crypto'):renderSpot('crypto');
+  else if(currentTab==='cto')      app.innerHTML=renderAssetTab('cto');
+  else if(currentTab==='crypto')   app.innerHTML=renderAssetTab('crypto');
   else if(currentTab==='info')     app.innerHTML=renderInfo();
   else app.innerHTML=renderHisto();
 }
 function switchTab(t){if(currentTab==='options'&&t!=='options'){pendingSettings=null;applyTheme();optNewBroker='';optNewBrokerErr=null;optNewClass='';optNewClassErr=null;optShowNewBroker=false;optShowNewClass=false;}currentTab=t;render();}
 function toggleExp(k){expanded[k]=!expanded[k];render();}
-// Sous-navigation Open positions | Sales — intégrée à l'en-tête de l'écran d'actifs.
+// [v4.0] Sous-navigation à 3 segments Open positions | Archived | Sales — intégrée à l'en-tête
+// de l'écran d'actifs. L'ordre traduit la nature des objets (deux états d'une même entité, puis
+// les cessions) : Archived s'insère en DEUXIÈME position, Sales se décale en troisième (§4.14).
+// Segment actif : état module non persisté, propre à chaque onglet, réinitialisé au rechargement.
 function setSpotView(type,v){spotView[type]=v;render();}
+// [v4.0] Routage du segment actif — 'positions' | 'archived' | 'sales'.
+function renderAssetTab(type){
+  const v=spotView[type]||'positions';
+  if(v==='sales')return renderES(type);
+  if(v==='archived')return renderArchived(type);
+  return renderSpot(type);
+}
 function subNav(type){
   const v=spotView[type]||'positions';
   const label=type==='cto'?'💼 Securities':'🪙 Cryptos';
@@ -521,6 +553,7 @@ function subNav(type){
     <h3 style="margin:0">${label}</h3>
     <div class="subnav">
       <button class="subnav-btn ${v==='positions'?'active':''}" onclick="setSpotView('${type}','positions')">Open positions</button>
+      <button class="subnav-btn ${v==='archived'?'active':''}" onclick="setSpotView('${type}','archived')">Archived</button>
       <button class="subnav-btn ${v==='sales'?'active':''}" onclick="setSpotView('${type}','sales')">Sales</button>
     </div>
   </div>`;
@@ -983,7 +1016,11 @@ function renderSpot(type){
   const isCto=type==='cto';
   const displayCur=getCur().code;
   const trades=isCto?DATA.ctoTrades:DATA.cryptoTrades;
-  const calcs=DATA[type].map(p=>({...p,c:calcPos(p,trades)}));
+  // [v4.0] Segment « Open positions » : positions non archivées uniquement (lecture défensive
+  // p.archived === true — les deux champs sont facultatifs, aucune migration).
+  // Conséquence assumée sur les KPI (§4.10) : les archivées en sortent — exclusion sans effet
+  // numérique (remaining nul y annule déjà investedRemaining et valo), clarification de périmètre.
+  const calcs=DATA[type].filter(p=>p.archived!==true).map(p=>({...p,c:calcPos(p,trades)}));
   // KPIs consolidés (§4.10) : uniquement positions valorisées (livePrice ET wacBase disponibles → investedRemaining calculable).
   const priced=calcs.filter(p=>p.livePrice&&p.c.investedRemaining!=null);
   const totI=priced.reduce((s,p)=>s+p.c.investedRemaining,0);   // DÉJÀ en devise de reporting — pas de convert() (piège §4.10)
@@ -993,16 +1030,23 @@ function renderSpot(type){
   },0);
   const totGP=totV-totI;
   const cols=isCto?18:15;
-  const colgroupSpot=makeColgroup(isCto?[2,9,8,7,8,8,4,5,7,7,10,3,7,7,5,7,5,3]:[2,10,10,5,6,9,9,11,3,7,9,6,9,5,3]);
+  // [v4.0] Dernière colonne élargie (Archive + Delete) : redistribution INTERNE, somme constante
+  // (112 en CTO, 104 en crypto) — jamais d'ajout ni de retrait de points (cf. CLAUDE.md).
+  const colgroupSpot=makeColgroup(isCto?[2,9,7,7,8,7,4,5,7,7,10,3,6,7,5,7,5,6]:[2,10,9,5,6,9,9,10,3,7,8,6,9,5,6]);
   const colgroupSub=makeColgroup([18,10,12,10,16,14,10,10]);
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
     const breach=c.soldeMin<0;
+    // [v4.0] Marqueur PASSIF « Closed » : signalisation, jamais une invite modale — aucune popup
+    // ne propose l'archivage après une vente soldante. Même prédicat que la garde de archivePos.
+    const closedBadge=isClosed(p,trades)
+      ?`<span style="font-size:9px;background:var(--computed-bg);color:var(--text2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Closed</span>`
+      :'';
     // [v3.0] Cellules en affichage seul — clic sur le nom = popup identité (édition, §4.13).
     rows+=`<tr style="cursor:pointer" onclick="toggleExp('${k}')">
       <td style="text-align:center;color:var(--text2);font-size:10px">${exp?'▲':'▼'}</td>
-      <td><span class="cell-edit" onclick="event.stopPropagation();posDialog('${type}',${p.id})" title="Edit position">${esc(p.name)||'<span style="color:var(--text2)">(unnamed)</span>'}</span></td>
+      <td><span class="cell-edit" onclick="event.stopPropagation();posDialog('${type}',${p.id})" title="Edit position">${esc(p.name)||'<span style="color:var(--text2)">(unnamed)</span>'}</span>${closedBadge}</td>
       ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.isin)}</td>`:''}
       <td style="font-size:11px;color:var(--text2)">${esc(p.ticker)}</td>
       ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.broker)}</td>
@@ -1024,7 +1068,10 @@ function renderSpot(type){
       <td class="r mono ${c.evol!=null?gpC(c.evol):''}">${c.evol!=null?fmtP(c.evol):''}</td>
       <td class="r mono ${c.gp!=null?gpC(c.gp):''}">${c.gp!=null?fmt(c.gp):''}</td>
       <td class="r mono">${c.investedRemaining!=null&&totI?fmtP(c.investedRemaining/totI):''}</td>
-      <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button></td>
+      <td class="btn-col" style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="event.stopPropagation();archivePos('${type}',${p.id})" title="Archive position">📦</button>
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button>
+      </td>
     </tr>`;
     if(exp){
       let sub='';
@@ -1091,7 +1138,7 @@ function renderSpot(type){
     <th>CCY</th>
     <th class="r computed">Qty ←</th><th class="r computed">Avg cost ←</th><th class="r computed">Invested ←</th>
     <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
-    <th class="r">P&L</th><th class="r">Weight</th><th></th>`;
+    <th class="r">P&L</th><th class="r">Weight</th><th class="btn-col"></th>`;
   return`<div class="card">
     ${subNav(type)}
     <div class="kpis">
@@ -1120,6 +1167,54 @@ function renderSpot(type){
       <span style="background:var(--stale-bg);color:var(--stale-fg)">🟡 Stale price (sync needed)</span>
       <span style="background:var(--err-bg);color:var(--err-fg)">🔴 Sync failed</span>
     </div>
+  </div>`;
+}
+
+// [v4.0] Segment « Archived » — positions p.archived === true, en LECTURE SEULE intégrale.
+// Un seul bouton par ligne : Restore. Pas de Delete, pas de Sell, pas de + Buy, pas de crayon de
+// lot, aucune cellule éditable — le gel porte sur la ligne entière (§4.9bis), pas sur les seuls
+// champs capables de violer l'éligibilité.
+// Aucun KPI, aucune sync : les archivées sont hors périmètre des totaux de l'onglet (§4.10) et
+// hors sync des prix (§4.8) ; la sync FX des lots, elle, les couvre depuis le segment ouvert.
+function renderArchived(type){
+  const isCto=type==='cto';
+  const trades=(isCto?DATA.ctoTrades:DATA.cryptoTrades)||[];
+  // Tri par date d'archivage décroissante : archivedAt est le seul ordre disponible pour une
+  // position sans lot ni cession (raison d'être du champ).
+  const archived=DATA[type].filter(p=>p.archived===true)
+    .map(p=>({...p,c:calcPos(p,trades)}))
+    .sort((a,b)=>String(b.archivedAt||'').localeCompare(String(a.archivedAt||'')));
+  const colgroupArch=makeColgroup(isCto?[14,10,10,10,9,5,8,8,9,9,8]:[20,14,7,11,11,12,12,13]);
+  const rows=archived.map(p=>{
+    const c=p.c;
+    return`<tr>
+      <td>${esc(p.name)||'<span style="color:var(--text2)">(unnamed)</span>'}</td>
+      ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.isin)}</td>`:''}
+      <td style="font-size:11px;color:var(--text2)">${esc(p.ticker)}</td>
+      ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.broker)}</td>
+      <td style="font-size:11px;color:var(--text2)">${esc(p.classe)}</td>`:''}
+      <td style="text-align:center;font-size:11px;color:var(--text2)">${p.currency?p.currency.toUpperCase():'—'}</td>
+      <td class="r mono">${fmtQ(c.tq)||'0'}</td>
+      <td class="r mono">${fmtQ(c.soldQty)||'0'}</td>
+      <td class="r mono">${c.wac>0?fmtNative(c.wac,p.currency):'—'}</td>
+      <td class="mono" style="font-size:11px;color:var(--text2)">${p.archivedAt||'—'}</td>
+      <td class="btn-col"><button class="btn btn-sm" onclick="restorePos('${type}',${p.id})" title="Restore position">↩ Restore</button></td>
+    </tr>`;
+  }).join('');
+  const hdrs=`<th>Name</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
+    ${isCto?'<th>Broker</th><th>Class</th>':''}
+    <th>CCY</th><th class="r">Qty bought</th><th class="r">Qty sold</th><th class="r">Avg cost</th>
+    <th>Archived on</th><th class="btn-col"></th>`;
+  return`<div class="card">
+    ${subNav(type)}
+    ${archived.length
+      ?`<div style="overflow-x:auto;max-width:100%">
+        <table class="resp-tbl" style="min-width:640px">${colgroupArch}<thead><tr>${hdrs}</tr></thead><tbody>${rows}</tbody></table>
+      </div>
+      <div class="legend">
+        <span>Archived positions are read-only. Restore one to edit it, sell it, or delete it.</span>
+      </div>`
+      :`<p style="color:var(--text2);font-size:12px">No archived position.</p>`}
   </div>`;
 }
 
@@ -1210,7 +1305,15 @@ function maxSellableAt(pos,trades,sellDate,excludeId){
   return dispo<0?0:dispo;
 }
 // Navigation depuis une cession vers sa position d'origine (identification cliquable).
-function goToPos(type,posId){expanded[type+posId]=true;spotView[type]='positions';switchTab(type);}
+// [v4.0] Le segment est choisi sur l'état RÉEL de la position — 'archived' si elle est archivée,
+// 'positions' sinon. Forcer 'positions' conduirait vers un segment où la position est absente,
+// recréant à l'écran l'impasse que l'archivage supprime dans les données (§4.14).
+function goToPos(type,posId){
+  const pos=(DATA[type]||[]).find(p=>p.id===posId);
+  expanded[type+posId]=true;
+  spotView[type]=(pos&&pos.archived===true)?'archived':'positions';
+  switchTab(type);
+}
 async function syncFx(key){
   if(!(DATA[key]||[]).length){toast('⚠️ No price to sync','#7f1d1d');return;}
   fxSyncAttempted[key]=true;
@@ -1456,6 +1559,9 @@ async function posDialog(type,id){
   const isEdit=id!=null;
   const pos=isEdit?DATA[type].find(p=>p.id===id):null;
   if(isEdit&&!pos)return;
+  // [v4.0] Gel contrôlé À L'OUVERTURE, jamais à la validation : une popup qui s'ouvre doit
+  // pouvoir aboutir (§4.13). Lecture défensive p.archived === true.
+  if(isEdit&&pos.archived===true){toast(ARCHIVED_READONLY_MSG,'#7f1d1d');return;}
   const brokers=DATA.settings.brokers||[];
   const classes=DATA.settings.classes||[];
   const hasLots=isEdit&&pos&&(pos.purchases||[]).length>0;
@@ -1514,6 +1620,7 @@ async function posDialog(type,id){
 async function lotDialog(type,posId,lotIndex){
   const pos=(DATA[type]||[]).find(p=>p.id===posId);
   if(!pos)return;
+  if(pos.archived===true){toast(ARCHIVED_READONLY_MSG,'#7f1d1d');return;}   // [v4.0] gel à l'ouverture
   const isEdit=lotIndex!=null;
   const lot=isEdit?(pos.purchases||[])[lotIndex]:null;
   if(isEdit&&!lot)return;
@@ -1580,6 +1687,7 @@ function manualLotFx(type,posId,lotIndex,raw){
 }
 async function manualPrice(type,id){
   const pos=(DATA[type]||[]).find(x=>x.id===id);
+  if(pos&&pos.archived===true){toast(ARCHIVED_READONLY_MSG,'#7f1d1d');return;}   // [v4.0] gel à l'ouverture
   const cur=pos&&pos.currency?pos.currency.toUpperCase():'?';
   const current=pos&&pos.livePrice!=null?pos.livePrice:null;
   const v=await showPrompt('Price in '+cur+(current!=null?' (current: '+current.toFixed(2)+')':'')+':',
@@ -1593,7 +1701,55 @@ async function manualPrice(type,id){
 }
 // [v3.0] addPos/addPurch ouvrent la popup au lieu d'écrire une ligne vide — écriture à la validation.
 function addPos(type){posDialog(type);}
-async function delPos(type,id){if(!(await showConfirm('Delete?')))return;DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();}
+// [v4.0] delPos — la garde « cessions liées » vient AVANT le showConfirm : demander « Delete? »
+// puis refuser après le clic serait une double sollicitation pour un résultat nul (§9).
+// Le bouton reste visible et actionnable en toutes circonstances : le refus s'exprime à
+// l'activation, jamais par un bouton grisé — un contrôle désactivé n'énonce pas sa propre règle.
+// Le message cite le NOMBRE de cessions et l'endroit où les traiter (segment Sales) : un refus
+// sans itinéraire est une impasse.
+async function delPos(type,id){
+  const key=type==='cto'?'ctoTrades':'cryptoTrades';
+  const linked=(DATA[key]||[]).filter(t=>t.posId===id);
+  if(linked.length>0){                                   // DELETE_HAS_SALES — aucune écriture, pas de showConfirm
+    toast('⚠️ Cannot delete: this position carries '+linked.length+' sale'+(linked.length>1?'s':'')
+      +'. Delete them in the Sales segment of this tab first, or archive the position instead.','#7f1d1d');
+    return;
+  }
+  if(!(await showConfirm('Delete?')))return;
+  DATA[type]=DATA[type].filter(p=>p.id!==id);saveData();render();
+}
+// [v4.0] Message unique du gel — un seul texte pour toutes les entrées d'écriture utilisateur.
+const ARCHIVED_READONLY_MSG='⚠️ This position is archived and read-only. Restore it first from the Archived segment.';
+// [v4.0] archivePos — garde UNIQUE isClosed (jamais un test réécrit ici). Refus ⇒ information et
+// no-op strict, aucune écriture. archivedAt = date du jour, seul ordre de tri disponible pour une
+// position sans lot ni cession.
+function archivePos(type,id){
+  const key=type==='cto'?'ctoTrades':'cryptoTrades';
+  const pos=(DATA[type]||[]).find(p=>p.id===id);
+  if(!pos)return;
+  if(!isClosed(pos,DATA[key]||[])){                      // ARCHIVE_NOT_CLOSED
+    toast('⚠️ Only a fully closed position can be archived: remaining quantity must be zero, '
+      +'with no negative stock at any date.','#7f1d1d');
+    return;
+  }
+  DATA[type]=DATA[type].map(p=>p.id===id?{...p,archived:true,archivedAt:isoToday()}:p);
+  saveData();render();
+}
+// [v4.0] restorePos — AUCUNE garde, AUCUNE condition, en aucune circonstance. C'est l'invariant
+// qui rend le gel intégral acceptable : toute condition ajoutée ici transformerait le détour
+// (restaurer → corriger → ré-archiver) en cul-de-sac, et rendrait certaines données définitivement
+// incorrigibles. Si une garde paraît nécessaire, c'est le gel qu'il faut rediscuter.
+// archivedAt est SUPPRIMÉ (delete) et non vidé : un archivedAt résiduel sur une position ouverte
+// serait un état de schéma que rien ne contrôle et que rien ne signale.
+function restorePos(type,id){
+  DATA[type]=(DATA[type]||[]).map(p=>{
+    if(p.id!==id)return p;
+    const np={...p,archived:false};
+    delete np.archivedAt;
+    return np;
+  });
+  saveData();render();
+}
 function addPurch(type,pid){lotDialog(type,pid);}
 // [v3.0] Point d'écriture lot — appelé par lotDialog. Création si lotIndex null, sinon édition.
 // `patch` = {date,qty,price,fees} déjà parsés/validés par lotDialog.
@@ -1621,6 +1777,10 @@ function upPurch(type,pid,lotIndex,patch){
 }
 // delPurch — retrait par index réel, aucun contrôle croisé sur les cessions ([DÉCISION] soft-signal).
 async function delPurch(type,pid,i){
+  const pos=(DATA[type]||[]).find(p=>p.id===pid);
+  // [v4.0] Gel vérifié AVANT le showConfirm (contrôle à l'ouverture) — inatteignable depuis
+  // l'écran, le segment Archived n'affichant pas les lots, mais la garde tient la règle.
+  if(pos&&pos.archived===true){toast(ARCHIVED_READONLY_MSG,'#7f1d1d');return;}
   if(!(await showConfirm('Delete?')))return;
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:p.purchases.filter((_,j)=>j!==i)}:p);
   saveData();render();

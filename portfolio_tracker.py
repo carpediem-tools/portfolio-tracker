@@ -271,11 +271,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         res = {"stocks_ok": [], "stocks_fail": [], "crypto_ok": [], "crypto_fail": []}
 
+        # [v4.0] Les positions ARCHIVÉES sont exclues de la sync des PRIX : remaining nul rend leur
+        # valorisation nulle quel que soit le prix — l'appel serait sans effet et consommerait du
+        # quota. Leur dernier livePrice reste figé, sans conséquence sur aucun calcul.
+        # ASYMÉTRIE DÉLIBÉRÉE : handle_syncfx_lots ne filtre RIEN (voir sa docstring). Ne pas
+        # « aligner par cohérence » les deux endpoints — ils ont des périmètres différents.
         if scope in ("all", "cto"):
-            tickers = [p["ticker"] for p in data.get("cto", []) if p.get("ticker")]
+            open_cto = [p for p in data.get("cto", []) if p.get("archived") is not True]
+            tickers = [p["ticker"] for p in open_cto if p.get("ticker")]
             if tickers:
                 yahoo = fetch_yahoo(tickers)
-                for pos in data["cto"]:
+                for pos in open_cto:
                     t = pos.get("ticker", "")
                     if t in yahoo:
                         entry = yahoo[t]
@@ -289,9 +295,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         res["stocks_fail"].append(t)
 
         if scope in ("all", "crypto"):
+            # [v4.0] Le filtre des archivées s'applique AVANT le regroupement par devise : une
+            # devise portée uniquement par des positions archivées ne produit alors AUCUN appel
+            # CoinGecko. L'exclusion réduit le nombre de requêtes — elle ne se contente pas
+            # d'ignorer des résultats.
+            open_crypto = [p for p in data.get("crypto", []) if p.get("archived") is not True]
             # Grouper les cryptos par devise
             by_cur = {}
-            for p in data.get("crypto", []):
+            for p in open_crypto:
                 cid, cur = parse_crypto_ticker(p.get("ticker") or "")
                 if cid and cur:
                     by_cur.setdefault(cur, []).append(cid)
@@ -300,7 +311,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 prices = fetch_coingecko(ids, cur)
                 for cid, price in prices.items():
                     gecko_all[(cid, cur)] = price
-            for pos in data["crypto"]:
+            for pos in open_crypto:
                 ticker = pos.get("ticker") or ""
                 cid, cur = parse_crypto_ticker(ticker)
                 if not ticker:
@@ -355,7 +366,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def handle_syncfx_lots(self, scope):
         """Sync des taux FX historiques (Frankfurter) pour les lots d'achat cto[] ou crypto[].
         Même logique que handle_syncfx mais itère purchases[] au lieu des cessions :
-        native = position.currency, date = lot.date. Retraite tous les lots datés."""
+        native = position.currency, date = lot.date. Retraite tous les lots datés.
+
+        [v4.0] NE FILTRE JAMAIS sur `archived` — TOUTES les positions, archivées comprises.
+        L'exclusion décidée pour handle_sync (prix) est sans risque, la valorisation d'une position
+        soldée étant nulle ; la transposer ici serait DESTRUCTRICE DE DONNÉES AFFICHÉES :
+        wacBaseAt(T) exige fxRateSource résolu sur TOUS les lots ≤ T. Après un changement de devise
+        de reporting — qui invalide tous les lots de toutes les positions — les lots d'une archivée
+        resteraient 'ko' indéfiniment, wacBaseAt retournerait null, et le coût de base de TOUTES
+        ses cessions disparaîtrait des Sales et des KPI. C'est exactement le préjudice que
+        l'archivage existe pour empêcher. La symétrie apparente des deux fonctions (même fichier,
+        mêmes paramètres, même itération) rend l'alignement tentant en relecture : ne pas le faire."""
         data = load_data()
         options_cur = data.get("settings", {}).get("currency", "eur")
         positions = data["cto"] if scope == "cto" else data["crypto"]
