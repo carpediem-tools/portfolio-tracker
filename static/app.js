@@ -1326,6 +1326,14 @@ function posExists(type,posId){return (DATA[type]||[]).some(p=>p.id===posId);}
 // [v3.0] posById — récupère la position pour lire wacBaseAt/le solde glissant. null si orpheline
 // → coût de base « — ». N'alimente JAMAIS name/isin/ticker (figés sur la cession, lecture seule).
 function posById(type,posId){return (DATA[type]||[]).find(p=>p.id===posId)||null;}
+// [v3.2] isPosArchived — prédicat UNIQUE du gel des cessions (spec Sales v3.2 §4.12).
+// Source unique de la garde d'ouverture de saleDialog, de la garde de delTrade ET du badge
+// « Archived position » : ne JAMAIS réécrire le test en ligne. Deux tests séparés dérivent, et un
+// badge affiché sur une ligne que le bouton accepte est l'incohérence muette que le badge évite.
+// Lecture DÉFENSIVE `=== true` : `archived` est facultatif et aucune migration ne l'introduit —
+// une position dépourvue du champ est ouverte. Orpheline (posById null) ⇒ false : elle n'est pas
+// gelée, elle est supprimée, et c'est le badge « Deleted position » qui la signale.
+function isPosArchived(type,posId){return posById(type,posId)?.archived===true;}
 // [v3.0] Plafond temporel (§4.2) : quantité max cessible à sellDate SANS rendre le solde glissant
 // de la position négatif à aucune date ≥ sellDate. Reprend l'algo de solde glissant de calcPos
 // (achats + / ventes −, achats avant ventes à date égale), en excluant la cession éditée.
@@ -1426,7 +1434,13 @@ function renderES(type){
   const trades=DATA[key]||[];
   const kpi=calcSalesKpis(type);
   const cur=getCur().code.toUpperCase();
-  const badge=`<span style="font-size:9px;background:var(--err-bg);color:var(--err-fg);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
+  const delBadge=`<span style="font-size:9px;background:var(--err-bg);color:var(--err-fg);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Deleted position</span>`;
+  // [v3.2] Badge « Archived position » (§4.12) — PASSIF, comme le badge « Closed » de Securities :
+  // il annonce la règle avant qu'elle ne morde. MUTUELLEMENT EXCLUSIF de « Deleted position »
+  // (isPosArchived exige que la position existe), et surtout d'effet OPPOSÉ sur le lien : celui-ci
+  // laisse l'identification CLIQUABLE — la position existe et reste consultable via goToPos, qui
+  // conduit au segment Archived. Ne pas factoriser les deux dans une branche « position anormale ».
+  const archBadge=`<span style="font-size:9px;background:var(--computed-bg);color:var(--text2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;white-space:nowrap;margin-left:4px">Archived position</span>`;
   // [v3.0] Tri d'affichage par sellDate sur une COPIE {t,i} — jamais le tableau stocké.
   // upTrade/delTrade opèrent sur l'id réel de la cession (§4.11).
   const display=trades.map((t,i)=>({t,i})).sort((a,b)=>{
@@ -1439,12 +1453,13 @@ function renderES(type){
     const pos=posById(type,t.posId);
     const o=calcTradeOptions(t,pos);       // {wb,tb,tsOpt,gpOpt,pctOpt}
     const exists=posExists(type,t.posId);
+    const archived=isPosArchived(type,t.posId);   // [v3.2] gel DÉRIVÉ à chaque rendu, jamais persisté
     const nm=t.name||'(unnamed)';
     return`<tr>
     <!-- IDENTIFICATION (lecture seule, figée sur la cession) -->
     <td>${exists
-      ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${esc(nm)}</span>`
-      :`${esc(nm)}${badge}`}</td>
+      ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${esc(nm)}</span>${archived?archBadge:''}`
+      :`${esc(nm)}${delBadge}`}</td>
     ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.isin||'')}</td>`:''}
     ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.ticker||'')}</td>`:''}
     <td style="text-align:center;font-size:11px;color:var(--text2)">${t.currency?t.currency.toUpperCase():'—'}</td>
@@ -1767,6 +1782,12 @@ async function delPos(type,id){
 }
 // [v4.0] Message unique du gel — un seul texte pour toutes les entrées d'écriture utilisateur.
 const ARCHIVED_READONLY_MSG='⚠️ This position is archived and read-only. Restore it first from the Archived segment.';
+// [v3.2] Message du gel côté Sales (§4.12) — texte dédié : ce n'est pas la cession qui est
+// archivée mais sa position, et le refus doit citer l'itinéraire de sortie. Il répond
+// symétriquement au refus de suppression d'une position, qui renvoie vers le segment Sales :
+// les deux forment un circuit fermé, sans impasse.
+const SALE_ARCHIVED_READONLY_MSG='⚠️ This sale belongs to an archived position and is read-only. '
+  +'Restore the position from the Archived segment of this tab first, then come back here.';
 // [v4.0] archivePos — garde UNIQUE isClosed (jamais un test réécrit ici). Refus ⇒ information et
 // no-op strict, aucune écriture. archivedAt = date du jour, seul ordre de tri disponible pour une
 // position sans lot ni cession.
@@ -1855,6 +1876,11 @@ async function saleDialog(type,posId,tradeId){
   const isEdit=tradeId!=null;
   const trade=isEdit?(DATA[key]||[]).find(t=>t.id===tradeId):null;
   if(isEdit&&!trade)return;
+  // [v3.2] Gel à l'OUVERTURE (§4.12) — jamais dans le chemin de validation : une popup qui s'ouvre
+  // doit pouvoir aboutir. Édition seule : la création depuis une position archivée est déjà
+  // impossible (sellFromPos exige remaining > QTY_EPS, incompatible avec isClosed), une garde
+  // supplémentaire ici serait redondante.
+  if(isEdit&&isPosArchived(type,posId)){toast(SALE_ARCHIVED_READONLY_MSG,'#7f1d1d');return;}   // SALE_POS_ARCHIVED
   const pos=posById(type,posId);   // peut être null (orpheline) — coût de base « — », saisie toujours possible
   // Identité : copiée depuis la position en création, figée sur la cession en édition (lecture seule).
   const name=(isEdit?trade.name:(pos&&pos.name))||'(unnamed)';
@@ -1941,7 +1967,17 @@ function upTrade(key,id,patch){
   });
   saveData();render();
 }
-async function delTrade(key,id){if(!(await showConfirm('Delete?')))return;DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();}
+// [v3.2] delTrade — garde d'archivage AVANT le showConfirm, miroir exact de celle de delPos :
+// demander « Delete? » puis refuser après le clic serait une double sollicitation pour un résultat
+// nul. delTrade reçoit `key` et non `type` — le type est dérivé ici même (comme syncFx), la
+// correspondance n'est pas dupliquée ailleurs.
+async function delTrade(key,id){
+  const type=key==='ctoTrades'?'cto':'crypto';
+  const trade=(DATA[key]||[]).find(t=>t.id===id);
+  if(trade&&isPosArchived(type,trade.posId)){toast(SALE_ARCHIVED_READONLY_MSG,'#7f1d1d');return;}   // SALE_POS_ARCHIVED
+  if(!(await showConfirm('Delete?')))return;
+  DATA[key]=DATA[key].filter(t=>t.id!==id);saveData();render();
+}
 // [v2.0] addHisto — ouvre histoDialog en création (plus d'écriture d'une ligne vide directe).
 function addHisto(){histoDialog();}
 // [v2.0] histoDialog — popup History PARTAGÉE création/édition (via showForm). Création si index
