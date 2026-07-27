@@ -386,24 +386,43 @@ function fmtNative(n,curCode){
 }
 const fmtP=n=>n==null?'—':(n*100).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
 function fmtC(n,curCode){if(n==null)return '—';const c=CURRENCIES[curCode]||getCur();const dec=(curCode||'').toLowerCase()==='jpy'?0:2;const v=n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
-const fmtQ=n=>!n?'':n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:6});
+// [v4.0] QTY_DECIMALS — UNIQUE décision de précision des quantités. Tout le reste en dérive :
+// l'affichage (fmtQ, fmtQMsg) ET la tolérance de comparaison (QTY_EPS).
+//
+// INVARIANT : une quantité rendue « 0 » à l'écran est EXACTEMENT une quantité que les gardes
+// traitent comme nulle. Les deux constantes ne peuvent plus se désynchroniser puisqu'il n'y en a
+// qu'une : QTY_EPS vaut une DEMI-unité du dernier chiffre affiché, c'est-à-dire précisément le
+// seuil à partir duquel fmtQ cesse de rendre « 0 ». Modifier QTY_DECIMALS déplace l'affichage ET
+// les seuils d'un seul geste — c'est le comportement voulu, ne JAMAIS les redécoupler.
+// Motif historique : avec un affichage à 6 décimales et une tolérance à 1e-9, une position à
+// remaining = 1e-7 s'affichait « 0 » et se voyait refuser l'archivage, sans que rien à l'écran
+// ne l'explique. La dérivation ferme cette famille de défauts, elle ne la corrige pas au cas par cas.
+const QTY_DECIMALS=6;
+// Tolérance UNIQUE de toute comparaison portant sur une QUANTITÉ — signal, garde, plafond de
+// saisie. Ne s'applique JAMAIS aux montants (prix, frais, taux FX, valorisations) : la tolérance
+// porte sur les quantités, dont les résidus sont un artefact de cumul, pas sur la monnaie.
+// Ne jamais réécrire sa valeur en dur ailleurs, ni la découpler de QTY_DECIMALS.
+const QTY_EPS=0.5*Math.pow(10,-QTY_DECIMALS);   // demi-unité du dernier chiffre affiché
+// La garde neutralise toute la BANDE DE TOLÉRANCE, pas seulement le zéro exact : c'est elle qui
+// doit s'afficher comme nulle. Avec l'ancien `!n`, un remaining de −1e-7 rendait « -0 » pendant
+// qu'isClosed le tenait pour nul — l'invariant « affiché 0 ⟺ traité comme nul » ne tenait alors
+// que sur les positifs. Chaîne vide comme pour le zéro exact : les appelants qui écrivent
+// `fmtQ(x)||'0'` affichent « 0 » sans changement, et « -0 » devient inatteignable.
+const fmtQ=n=>(n==null||isNaN(n)||Math.abs(n)<QTY_EPS)?'':n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:QTY_DECIMALS});
 // [v4.0] fmtQMsg — formateur de quantité RÉSERVÉ AUX MESSAGES de validation de saisie.
-// fmtQ plafonne à 6 décimales : un plafond réel de 0.4399999 s'y afficherait « 0.44 », donnant
-// un message arithmétiquement faux — « 0.44 available » alors que c'est justement 0.44 qui vient
-// d'être refusé. Ici : 8 décimales (précision des quantités crypto), résidu flottant absorbé par
-// toFixed (0.43999999999999994 → « 0.44 »), zéros de queue supprimés, et tout ce qui est
-// indistinguable de zéro à QTY_EPS près rendu « 0 » (jamais « -0 » ni « 0.00000000 »).
-// fmtQ reste INCHANGÉ : les colonnes des tableaux restent à 6 décimales (décision prise).
-// INVARIANT : fmtQMsg ne doit JAMAIS rendre une valeur que le validateur refuserait.
-// toFixed arrondit au plus proche, donc parfois VERS LE HAUT : un plafond de 0.999999995 se
-// rendrait « 1 », que `q>cap+QTY_EPS` refuse aussitôt. Un message qui énonce un plafond non
-// saisissable est le bug qu'il est censé corriger, déplacé d'un ordre de grandeur. D'où la
-// troncature de sûreté ci-dessous : si l'arrondi a franchi la tolérance, on retire une unité
-// de la 8e décimale (1e-8, l'unité du format, pas la tolérance) pour retomber sous le plafond.
+// Même précision que fmtQ (un message ne peut pas énoncer un plafond plus fin que ce que
+// l'utilisateur lit dans la colonne), mais sans séparateur de milliers et sans zéros de queue,
+// et tout ce qui est indistinguable de zéro à QTY_EPS près rendu « 0 » (jamais « -0 »).
+// INVARIANT : fmtQMsg ne doit JAMAIS rendre une valeur que le validateur refuserait. Un message
+// qui énonce un plafond non saisissable est le bug qu'il est censé corriger, déplacé d'un ordre
+// de grandeur. La garde ci-dessous retire une unité du dernier chiffre si l'arrondi de toFixed
+// (au plus proche, donc parfois VERS LE HAUT) a franchi la tolérance. Avec ε = une demi-unité de
+// ce même chiffre, cet écart est structurellement impossible : la garde ne se déclenche plus,
+// elle documente l'invariant et protège d'un futur changement de QTY_DECIMALS.
 const fmtQMsg=n=>{
   if(n==null||isNaN(n)||Math.abs(n)<QTY_EPS)return '0';
-  let s=n.toFixed(8);
-  if(Number(s)>n+QTY_EPS)s=(Number(s)-1e-8).toFixed(8);   // ressaisir le message doit rester accepté
+  let s=n.toFixed(QTY_DECIMALS);
+  if(Number(s)>n+QTY_EPS)s=(Number(s)-Math.pow(10,-QTY_DECIMALS)).toFixed(QTY_DECIMALS);
   return s.indexOf('.')<0?s:s.replace(/0+$/,'').replace(/\.$/,'');
 };
 function isoToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
@@ -483,14 +502,6 @@ function calcPos(p,trades=[]){
   const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
   return{tq,ti,wac,wacBase,wacBaseAt,soldQty,remaining,soldeMin,breachDate,investedRemaining,valo,gp,evol};
 }
-// [v4.0] QTY_EPS — tolérance flottante UNIQUE de toute comparaison portant sur une QUANTITÉ
-// (couvre les 8 décimales des quantités crypto). Quantités stockées, cumuls et saisies parsées
-// sont des doubles : une position réellement soldée vaut 5.5e-17 et non 0, un plafond de vente
-// réellement égal à 0.44 peut valoir 1 ulp en dessous. Toute comparaison de quantité — signal,
-// garde, plafond de saisie — passe par cette constante ; ne jamais réécrire 1e-9 en dur ailleurs.
-// Ne s'applique JAMAIS aux montants (prix, frais, taux FX, valorisations) : la tolérance porte
-// sur les quantités, dont les résidus sont un artefact de cumul, pas sur la monnaie.
-const QTY_EPS=1e-9;
 // [v4.0] isClosed — prédicat UNIQUE d'éligibilité à l'archivage (spec Securities v4.0 §4.9bis).
 // Source unique du badge « Closed » ET de la garde de archivePos : ne JAMAIS réécrire le test
 // ailleurs (deux tests séparés dérivent, et un badge affiché sur une ligne que le bouton refuse
@@ -505,6 +516,8 @@ const QTY_EPS=1e-9;
 // La MÊME tolérance gouverne le bandeau de cohérence temporelle et le signal de brèche : sans
 // cela, une position à soldeMin = −5.5e-17 serait archivable ET dénoncée par le bandeau — une
 // fois archivée, invisible et gelée, elle laisserait un bandeau que rien de visible n'explique.
+// QTY_EPS est définie près de fmtQ et DÉRIVE de QTY_DECIMALS : ce que ce prédicat accepte est
+// exactement ce que la colonne Qty affiche « 0 ». Ne pas le redécoupler de l'affichage.
 function isClosed(p,trades){
   if(!p)return false;
   const c=calcPos(p,trades||[]);
