@@ -744,7 +744,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "sellDate", "qSold", "priceSell", "feesSell", "fxRateSell", "fxRateSellSource",
         ] + SORTIES_OPT_HEADERS
 
-        def sortie_row(t, pos):
+        def sortie_row(t, pos, ident=None):
             """[v3.0] Ligne cession. pos = résultat calc_pos de la position d'origine (ou None si
             orpheline). pos_id vide si orpheline ; avg_cost_at_sale = wac_base_at(sellDate) CALCULÉ
             à l'export (devise de reporting), vide si indisponible (orpheline, aucun lot ≤ sellDate,
@@ -752,9 +752,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             wb = pos['wac_base_at'](t.get('sellDate')) if pos else None
             r = {
                 "id":        t.get("id", ""),
-                "name":      t.get("name", ""),
-                "ticker":    t.get("ticker", ""),
-                "isin":      t.get("isin", ""),
+                # Identité dérivée, miroir de renderES : la position vivante (ident) fait foi,
+                # la copie figée sur la cession n'est qu'un fallback (position supprimée).
+                "name":      (ident or {}).get("name")   or t.get("name", ""),
+                "ticker":    (ident or {}).get("ticker") or t.get("ticker", ""),
+                "isin":      (ident or {}).get("isin")   or t.get("isin", ""),
                 "currency":  t.get("currency", ""),
                 "pos_id":    t.get("posId") if t.get("posId") is not None else "",
                 "avg_cost_at_sale":  round(wb, 4) if wb is not None else "",
@@ -772,8 +774,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # l'accesseur daté wac_base_at à sortie_row. .get(posId) → None si orpheline (posId sans position).
         cto_pos_by_id    = {p.get('id'): calc_pos(p, data.get('ctoTrades', []))    for p in data.get('cto', [])}
         crypto_pos_by_id = {p.get('id'): calc_pos(p, data.get('cryptoTrades', [])) for p in data.get('crypto', [])}
-        cto_sorties_rows    = [sortie_row(t, cto_pos_by_id.get(t.get('posId')))    for t in data.get('ctoTrades', [])]
-        crypto_sorties_rows = [sortie_row(t, crypto_pos_by_id.get(t.get('posId'))) for t in data.get('cryptoTrades', [])]
+        # Lookups d'IDENTITÉ (positions brutes) — distincts des lookups de CALCUL ci-dessus,
+        # qui contiennent le résultat de calc_pos et non les champs name/isin/ticker.
+        cto_ident_by_id    = {p.get('id'): p for p in data.get('cto', [])}
+        crypto_ident_by_id = {p.get('id'): p for p in data.get('crypto', [])}
+        cto_sorties_rows    = [sortie_row(t, cto_pos_by_id.get(t.get('posId')),    cto_ident_by_id.get(t.get('posId')))    for t in data.get('ctoTrades', [])]
+        crypto_sorties_rows = [sortie_row(t, crypto_pos_by_id.get(t.get('posId')), crypto_ident_by_id.get(t.get('posId'))) for t in data.get('cryptoTrades', [])]
 
         # ── 5. Historique ─────────────────────────────────────────────────────
         # currency injectée depuis settings ; classes aplati en class_<clé> (union triée)

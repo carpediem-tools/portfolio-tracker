@@ -1521,14 +1521,15 @@ function renderES(type){
     const o=calcTradeOptions(t,pos);       // {wb,tb,tsOpt,gpOpt,pctOpt}
     const exists=posExists(type,t.posId);
     const archived=isPosArchived(type,t.posId);   // [v3.2] gel DÉRIVÉ à chaque rendu, jamais persisté
-    const nm=t.name||'(unnamed)';
+    // Identité dérivée : pos vivante prioritaire, copie figée en fallback (position supprimée).
+    const nm=(pos&&pos.name)||t.name||'(unnamed)';
     return`<tr>
     <!-- IDENTIFICATION (lecture seule, figée sur la cession) -->
     <td>${exists
       ?`<span style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="goToPos('${type}',${t.posId})">${esc(nm)}</span>${archived?archBadge:''}`
       :`${esc(nm)}${delBadge}`}</td>
-    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.isin||'')}</td>`:''}
-    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(t.ticker||'')}</td>`:''}
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc((pos&&pos.isin)||t.isin||'')}</td>`:''}
+    ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc((pos&&pos.ticker)||t.ticker||'')}</td>`:''}
     <td style="text-align:center;font-size:11px;color:var(--text2)">${t.currency?t.currency.toUpperCase():'—'}</td>
     <td class="r mono" style="font-size:11px;color:var(--text2)">${o.wb!=null?fmt(o.wb):'—'}</td>
     <!-- VENTE (affichage seul) -->
@@ -1949,10 +1950,11 @@ async function saleDialog(type,posId,tradeId){
   // supplémentaire ici serait redondante.
   if(isEdit&&isPosArchived(type,posId)){toast(SALE_ARCHIVED_READONLY_MSG,'#7f1d1d');return;}   // SALE_POS_ARCHIVED
   const pos=posById(type,posId);   // peut être null (orpheline) — coût de base « — », saisie toujours possible
-  // Identité : copiée depuis la position en création, figée sur la cession en édition (lecture seule).
-  const name=(isEdit?trade.name:(pos&&pos.name))||'(unnamed)';
-  const isin=(isEdit?trade.isin:(pos&&pos.isin))||'';
-  const ticker=(isEdit?trade.ticker:(pos&&pos.ticker))||'';
+  // Identité dérivée (cf. renderES) : la position vivante fait foi, en création comme
+  // en édition. La copie figée sur la cession ne sert que si la position n'existe plus.
+  const name=(pos&&pos.name)||(isEdit?trade.name:'')||'(unnamed)';
+  const isin=(pos&&pos.isin)||(isEdit?trade.isin:'')||'';
+  const ticker=(pos&&pos.ticker)||(isEdit?trade.ticker:'')||'';
   const currency=(isEdit?trade.currency:(pos&&pos.currency))||null;
   const curLabel=currency?currency.toUpperCase():'—';
   const optCur=getCur().code.toUpperCase();
