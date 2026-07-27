@@ -387,6 +387,25 @@ function fmtNative(n,curCode){
 const fmtP=n=>n==null?'—':(n*100).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
 function fmtC(n,curCode){if(n==null)return '—';const c=CURRENCIES[curCode]||getCur();const dec=(curCode||'').toLowerCase()==='jpy'?0:2;const v=n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});return c.pos==='before'?c.symbol+' '+v:v+' '+c.symbol;}
 const fmtQ=n=>!n?'':n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:6});
+// [v4.0] fmtQMsg — formateur de quantité RÉSERVÉ AUX MESSAGES de validation de saisie.
+// fmtQ plafonne à 6 décimales : un plafond réel de 0.4399999 s'y afficherait « 0.44 », donnant
+// un message arithmétiquement faux — « 0.44 available » alors que c'est justement 0.44 qui vient
+// d'être refusé. Ici : 8 décimales (précision des quantités crypto), résidu flottant absorbé par
+// toFixed (0.43999999999999994 → « 0.44 »), zéros de queue supprimés, et tout ce qui est
+// indistinguable de zéro à QTY_EPS près rendu « 0 » (jamais « -0 » ni « 0.00000000 »).
+// fmtQ reste INCHANGÉ : les colonnes des tableaux restent à 6 décimales (décision prise).
+// INVARIANT : fmtQMsg ne doit JAMAIS rendre une valeur que le validateur refuserait.
+// toFixed arrondit au plus proche, donc parfois VERS LE HAUT : un plafond de 0.999999995 se
+// rendrait « 1 », que `q>cap+QTY_EPS` refuse aussitôt. Un message qui énonce un plafond non
+// saisissable est le bug qu'il est censé corriger, déplacé d'un ordre de grandeur. D'où la
+// troncature de sûreté ci-dessous : si l'arrondi a franchi la tolérance, on retire une unité
+// de la 8e décimale (1e-8, l'unité du format, pas la tolérance) pour retomber sous le plafond.
+const fmtQMsg=n=>{
+  if(n==null||isNaN(n)||Math.abs(n)<QTY_EPS)return '0';
+  let s=n.toFixed(8);
+  if(Number(s)>n+QTY_EPS)s=(Number(s)-1e-8).toFixed(8);   // ressaisir le message doit rester accepté
+  return s.indexOf('.')<0?s:s.replace(/0+$/,'').replace(/\.$/,'');
+};
 function isoToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
 function isoNow(){const d=new Date(),p=n=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;}
 const gpC=n=>n>=0?'gain':'loss';
@@ -464,10 +483,14 @@ function calcPos(p,trades=[]){
   const evol=(gp!=null&&investedRemaining>0)?gp/investedRemaining:null;
   return{tq,ti,wac,wacBase,wacBaseAt,soldQty,remaining,soldeMin,breachDate,investedRemaining,valo,gp,evol};
 }
-// [v4.0] Tolérance flottante de l'éligibilité à l'archivage — couvre les 8 décimales des
-// quantités crypto. `remaining` et `soldeMin` sont des sommes de flottants : une position
-// réellement soldée vaut 5.5e-17, jamais 0.
-const CLOSED_EPS=1e-9;
+// [v4.0] QTY_EPS — tolérance flottante UNIQUE de toute comparaison portant sur une QUANTITÉ
+// (couvre les 8 décimales des quantités crypto). Quantités stockées, cumuls et saisies parsées
+// sont des doubles : une position réellement soldée vaut 5.5e-17 et non 0, un plafond de vente
+// réellement égal à 0.44 peut valoir 1 ulp en dessous. Toute comparaison de quantité — signal,
+// garde, plafond de saisie — passe par cette constante ; ne jamais réécrire 1e-9 en dur ailleurs.
+// Ne s'applique JAMAIS aux montants (prix, frais, taux FX, valorisations) : la tolérance porte
+// sur les quantités, dont les résidus sont un artefact de cumul, pas sur la monnaie.
+const QTY_EPS=1e-9;
 // [v4.0] isClosed — prédicat UNIQUE d'éligibilité à l'archivage (spec Securities v4.0 §4.9bis).
 // Source unique du badge « Closed » ET de la garde de archivePos : ne JAMAIS réécrire le test
 // ailleurs (deux tests séparés dérivent, et un badge affiché sur une ligne que le bouton refuse
@@ -476,13 +499,16 @@ const CLOSED_EPS=1e-9;
 //   - jamais `remaining === 0` : égalité flottante, refuserait une ligne affichée à zéro ;
 //   - jamais `soldeMin >= 0`   : soldeMin est un MINIMUM initialisé à 0 sur des sommes de
 //     flottants — son résidu est TOUJOURS du mauvais côté, le test échouerait systématiquement
-//     sur toute position à décimales longues. Même ε, testé en `> -CLOSED_EPS`.
+//     sur toute position à décimales longues. Même ε, testé en `> -QTY_EPS`.
 // Le second test n'est pas un raffinement du premier : « globalement soldé, localement négatif »
 // (remaining nul, soldeMin < 0) est un cas réel, non archivable.
+// La MÊME tolérance gouverne le bandeau de cohérence temporelle et le signal de brèche : sans
+// cela, une position à soldeMin = −5.5e-17 serait archivable ET dénoncée par le bandeau — une
+// fois archivée, invisible et gelée, elle laisserait un bandeau que rien de visible n'explique.
 function isClosed(p,trades){
   if(!p)return false;
   const c=calcPos(p,trades||[]);
-  return Math.abs(c.remaining)<CLOSED_EPS&&c.remaining>-CLOSED_EPS&&c.soldeMin>-CLOSED_EPS;
+  return Math.abs(c.remaining)<QTY_EPS&&c.remaining>-QTY_EPS&&c.soldeMin>-QTY_EPS;
 }
 // [v3.0] Coût de base DATÉ d'une cession — délègue à calcPos(pos).wacBaseAt(date).
 // pos peut être null (position orpheline) → null. Ne dépend que des lots d'achat, jamais des
@@ -908,8 +934,14 @@ function shouldShowOrphanBanner(){
 // du bandeau FX (nature différente : chronologie vs devise ; les deux peuvent coexister).
 // true si au moins une position (cto ou crypto) a soldeMin < 0 (brèche) ou remaining < 0 (§4.5bis).
 // Lecture seule de calcPos — un seul et même critère, aucun calcul dupliqué, court-circuit au 1er true.
+// [v4.0] Seuils tolérants à QTY_EPS, le MÊME que celui d'isClosed, et ce n'est pas un confort
+// d'écriture : avec un test strict, une position à soldeMin = −5.5e-17 est simultanément
+// archivable (isClosed vrai) et dénoncée par ce bandeau. Une fois archivée, elle disparaît des
+// vues courantes et se gèle : le bandeau reste allumé sans qu'aucune ligne visible ne le porte,
+// et l'utilisateur n'a plus rien à corriger pour l'éteindre. C'est le défaut décrit en B2 tech §9,
+// atteint par l'autre opérande — les deux tests doivent partager la même tolérance ou aucune.
 function shouldShowTemporalBanner(){
-  const bad=c=>c.soldeMin<0||c.remaining<0;
+  const bad=c=>c.soldeMin<-QTY_EPS||c.remaining<-QTY_EPS;
   if((DATA.cto||[]).some(p=>bad(calcPos(p,DATA.ctoTrades))))return true;
   if((DATA.crypto||[]).some(p=>bad(calcPos(p,DATA.cryptoTrades))))return true;
   return false;
@@ -1037,7 +1069,9 @@ function renderSpot(type){
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
-    const breach=c.soldeMin<0;
+    // [v4.0] Même tolérance que le bandeau du Dashboard et qu'isClosed : un signal de brèche sur
+    // une ligne que le bouton d'archivage accepte serait la même incohérence, à l'échelle de la ligne.
+    const breach=c.soldeMin<-QTY_EPS;
     // [v4.0] Marqueur PASSIF « Closed » : signalisation, jamais une invite modale — aucune popup
     // ne propose l'archivage après une vente soldante. Même prédicat que la garde de archivePos.
     const closedBadge=isClosed(p,trades)
@@ -1052,7 +1086,7 @@ function renderSpot(type){
       ${isCto?`<td style="font-size:11px;color:var(--text2)">${esc(p.broker)}</td>
       <td style="font-size:11px;color:var(--text2)">${esc(p.classe)}</td>`:''}
       <td style="text-align:center;font-size:11px;color:var(--text2)">${p.currency?p.currency.toUpperCase():'—'}</td>
-      <td class="r mono computed ${(c.remaining<0||breach)?'error-cell':''}">${c.soldQty>0
+      <td class="r mono computed ${(c.remaining<-QTY_EPS||breach)?'error-cell':''}">${c.soldQty>0
         ?`<div style="color:var(--text2);font-size:10px">${fmtQ(c.tq)}</div><div style="color:var(--red);font-size:10px">−${fmtQ(c.soldQty)}</div><div style="border-top:1px solid var(--border);font-weight:700">${fmtQ(c.remaining)||'0'}</div>`
         :fmtQ(c.remaining)}${breach?`<div style="color:var(--red);font-size:9px">Negative stock at ${c.breachDate}</div>`:''}</td>
       <td class="r mono computed">${c.wac>0?fmtNative(c.wac,p.currency):''}</td>
@@ -1793,7 +1827,10 @@ function sellFromPos(type,id){
   const pos=DATA[type].find(p=>p.id===id);
   if(!pos)return;
   const c=calcPos(pos,DATA[key]);
-  if(!(c.remaining>0)){toast('⚠️ No remaining quantity to sell','#7f1d1d');return;}   // NO_QUANTITY_AVAILABLE
+  // [v4.0] Seuil tolérant : sans lui, un remaining résiduel de 5.5e-17 laisserait le bouton Sell
+  // actionnable sur une ligne badgée « Closed », alors que B2 §4.12 fonde l'absence de garde
+  // d'archivage sur l'exclusion mutuelle des deux conditions.
+  if(!(c.remaining>QTY_EPS)){toast('⚠️ No remaining quantity to sell','#7f1d1d');return;}   // NO_QUANTITY_AVAILABLE
   saleDialog(type,id);
 }
 // [v3.0] saleDialog — popup de cession PARTAGÉE Securities/Cryptos (via showForm).
@@ -1837,7 +1874,11 @@ async function saleDialog(type,posId,tradeId){
       const q=strictNum(vals.qSold);
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';
       const cap=maxSellableAt(pos,DATA[key],vals.sellDate.trim(),isEdit?tradeId:undefined);
-      if(q>cap)return 'Quantity exceeds available at that date ('+(fmtQ(cap)||'0')+' available).';  // QTY_EXCEEDS_TEMPORAL
+      // Tolérance QTY_EPS : la saisie parsée et le plafond cumulé sont deux doubles dont les
+      // résidus jouent en sens contraires (le parsing arrondit vers le haut, le cumul du solde
+      // glissant vers le bas). Sans tolérance, une quantité que l'interface affiche comme
+      // disponible est refusée à 1 ulp près — le refus porte alors sur du bruit, pas sur la règle.
+      if(q>cap+QTY_EPS)return 'Quantity exceeds available at that date ('+fmtQMsg(cap)+' available).';  // QTY_EXCEEDS_TEMPORAL
       if(vals.priceSell!==''&&isNaN(strictNum(vals.priceSell)))return 'Unit price must be a number.';
       if(vals.feesSell!==''&&isNaN(strictNum(vals.feesSell)))return 'Fees must be a number.';
       if(isEdit&&vals.fxManual!==''&&(isNaN(strictNum(vals.fxManual))||strictNum(vals.fxManual)<=0))
