@@ -608,19 +608,21 @@ function lineChart(hist){
   const curSym={eur:'€',usd:'$',chf:'CHF',gbp:'£',jpy:'¥',hkd:'HK$',cny:'CN¥'}[displayCur]||'€';
   const pts=(hist||DATA.historique).map(h=>({year:h.year,total:convertHistoRow(h,h.total)})).filter(h=>h.total!=null&&h.total>0);
   if(pts.length<2) return '<p style="color:var(--text2);font-size:12px;padding:8px 0">At least 2 years of data required.</p>';
-  const W=900,H=175,PL=60,PR=20,PT=22,PB=30;
-  const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
+  const W=900,H=175,PR=20,PT=22,PB=30;
   const vs=pts.map(p=>p.total);
   const dataMax=Math.max(...vs),dataMin=Math.min(...vs);
   const yMax=niceMax(dataMax);
+  const ticks=[0,.25,.5,.75,1].map(t=>Math.round(yMax*t));
+  const tickLabels=ticks.map(v=>v.toLocaleString('en-US')+' '+curSym);
+  const PL=Math.max(60,18+Math.max(...tickLabels.map(s=>s.length))*6);
+  const xs=pts.map((_,i)=>PL+i*(W-PL-PR)/(pts.length-1));
   const ys=vs.map(v=>PT+(H-PT-PB)*(1-v/yMax));
   const pD=xs.map((x,i)=>(i?'L':'M')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
   const fD=pD+` L${xs[xs.length-1].toFixed(1)},${H-PB} L${xs[0].toFixed(1)},${H-PB} Z`;
-  const ticks=[0,.25,.5,.75,1].map(t=>Math.round(yMax*t));
-  const grid=ticks.map(v=>{
+  const grid=ticks.map((v,i)=>{
     const y=(PT+(H-PT-PB)*(1-v/yMax)).toFixed(1);
     return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>
-      <text x="${PL-6}" y="${(+y+4).toFixed(0)}" text-anchor="end" font-size="9" fill="var(--text2)">${v.toLocaleString('en-US')} ${curSym}</text>`;
+      <text x="${PL-6}" y="${(+y+4).toFixed(0)}" text-anchor="end" font-size="9" fill="var(--text2)">${tickLabels[i]}</text>`;
   }).join('');
   const maxI=vs.indexOf(dataMax),minI=vs.indexOf(dataMin);
   const labelIdx=new Set([0,pts.length-1,maxI,minI]);
@@ -659,7 +661,7 @@ function renderOptions(){
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         ${THEMES.map(t=>`<button class="btn ${pendingSettings.theme===t.id?'btn-blue':'btn-ghost'}" onclick="optSetTheme('${t.id}')">${t.label}</button>`).join('')}
       </div>
-      <p style="font-size:11px;color:var(--text2);margin-top:8px">Visual theme of the interface. Applied instantly and saved locally in this browser (default: Bold Modern).</p>
+      <p style="font-size:11px;color:var(--text2);margin-top:8px">Visual theme of the interface. Applied when you click Save (saved locally in this browser, default: Bold Modern).</p>
     </div>
     <div style="margin-bottom:20px">
       <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:8px;font-weight:600">Currency</label>
@@ -730,21 +732,23 @@ function renderOptions(){
 }
 function renderInfo(){
   return`<div class="card">
-    <h3>📊 Portfolio Tracker — V2.0</h3>
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v2.0</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/07/22</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>CarpeDiem</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">GitHub</span><span><a href="https://github.com/carpediem-tools/portfolio-tracker" target="_blank">carpediem-tools/portfolio-tracker</a></span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">License</span><span>MIT</span></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:20px">
-      <a href="/docs" target="_blank" class="btn btn-blue" style="font-size:13px;text-decoration:none;display:inline-block">📖 Open documentation</a>
+      <a href="/docs" target="_blank" class="btn btn-blue" style="font-size:13px;text-decoration:none;display:inline-block">📖 Documentation</a>
     </div>
   </div>`;
 }
 function optSetCurrency(c){pendingSettings.currency=c;document.getElementById('app').innerHTML=renderOptions();}
-// Aperçu instantané du thème sans persistance : pose data-theme en direct,
-// mais n'écrit dans localStorage qu'au Save (saveOptions).
-function optSetTheme(id){pendingSettings.theme=id;document.documentElement.setAttribute('data-theme',id);document.getElementById('app').innerHTML=renderOptions();}
+// Sélection différée : met à jour pendingSettings.theme (et le surlignage du
+// bouton) sans toucher au thème réellement appliqué — data-theme n'est posé
+// qu'au Save (saveOptions), jamais en aperçu live.
+function optSetTheme(id){pendingSettings.theme=id;document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewBroker(){optShowNewBroker=!optShowNewBroker;if(optShowNewBroker){optNewBroker='';optNewBrokerErr=null;}document.getElementById('app').innerHTML=renderOptions();}
 function optToggleNewClass(){optShowNewClass=!optShowNewClass;if(optShowNewClass){optNewClass='';optNewClassErr=null;}document.getElementById('app').innerHTML=renderOptions();}
 // Suppression différée : la confirmation d'impact est affichée immédiatement
@@ -843,16 +847,28 @@ function importJSON(input){
   };r.readAsText(f);
 }
 
-// shouldShowFxBanner — 3 conditions indépendantes (spec Dashboard v2.0 §4.5).
-// Ne duplique jamais la règle tout-ou-rien (calcPos) ni le filtre gpOpt (calcTradeOptions).
-// [v2.0] La condition 3 (gpOpt == null) capture désormais AUSSI le cas « coût de base daté
-// indisponible » via la sémantique v3.0 de gpOpt (Sales v3.0 §4.8) — pas de 4e condition FX.
+// shouldShowFxBanner — conditions strictement FX, indépendantes (spec Dashboard §4.5).
+// Ne duplique jamais la règle tout-ou-rien (calcPos) ni un filtre gpOpt (calcTradeOptions).
+// [v3.1] Les deux anciennes conditions gpOpt == null ont été RETIRÉES : gpOpt == null couvrait
+// aussi le coût de base incalculable (orphelin / aucun lot à la date de vente), qui n'est PAS un
+// problème FX → il relève désormais de shouldShowOrphanBanner. Détection FX = taux de vente
+// absent ou ko. La condition wacBase == null reste ici : c'est un vrai signal FX (règle tout-ou-rien
+// sur les lots), et getFx() vide reste la condition « aucun taux chargé ».
 function shouldShowFxBanner(){
   if(Object.keys(getFx()).length===0)return true;
   if((DATA.cto||[]).some(p=>calcPos(p,DATA.ctoTrades).wacBase==null))return true;
   if((DATA.crypto||[]).some(p=>calcPos(p,DATA.cryptoTrades).wacBase==null))return true;
-  if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t,posById('cto',t.posId)).gpOpt==null))return true;
-  if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t,posById('crypto',t.posId)).gpOpt==null))return true;
+  if((DATA.ctoTrades||[]).some(t=>t.fxRateSell==null||t.fxRateSellSource==='ko'))return true;
+  if((DATA.cryptoTrades||[]).some(t=>t.fxRateSell==null||t.fxRateSellSource==='ko'))return true;
+  return false;
+}
+// [v3.1] shouldShowOrphanBanner — bandeau « coût de base incalculable », DISTINCT et INDÉPENDANT
+// des bandeaux FX et temporel (les trois peuvent coexister). true si au moins une cession (cto ou
+// crypto) a tb == null : cession orpheline (position supprimée) ou aucun lot d'achat à la date de
+// vente. Lecture seule de calcTradeOptions, court-circuit au 1er true — aucun recalcul dupliqué.
+function shouldShowOrphanBanner(){
+  if((DATA.ctoTrades||[]).some(t=>calcTradeOptions(t,posById('cto',t.posId)).tb==null))return true;
+  if((DATA.cryptoTrades||[]).some(t=>calcTradeOptions(t,posById('crypto',t.posId)).tb==null))return true;
   return false;
 }
 // [v2.0] shouldShowTemporalBanner — bandeau de cohérence temporelle, DISTINCT et INDÉPENDANT
@@ -935,6 +951,9 @@ function renderDash(){
   ${shouldShowTemporalBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
     ⚠️ Some positions have a negative stock at some point in time — check your buys and sales.
   </div>`:''}
+  ${shouldShowOrphanBanner()?`<div style="background:var(--banner-bg);border:1px solid var(--banner-border);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--banner-fg)">
+    ⚠️ Some sales reference a deleted position or have no purchase lot at their sell date — cost basis and P&L cannot be computed.
+  </div>`:''}
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     ${makePie(ctoC.filter(p=>valoOk(p)).map(p=>({name:p.name||p.ticker||'?',valo:convertValo(p,p.c)})).filter(o=>o.valo!=null),'valo','name','Securities')}
     ${makePie(cls,'valo','name','Asset class')}
@@ -975,7 +994,7 @@ function renderSpot(type){
   const totGP=totV-totI;
   const cols=isCto?18:15;
   const colgroupSpot=makeColgroup(isCto?[2,9,8,7,8,8,4,5,7,7,10,3,7,7,5,7,5,3]:[2,10,10,5,6,9,9,11,3,7,9,6,9,5,3]);
-  const colgroupSub=makeColgroup([18,10,12,10,14,12,14,5,5]);
+  const colgroupSub=makeColgroup([18,10,12,10,16,14,10,10]);
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
@@ -1020,8 +1039,9 @@ function renderSpot(type){
       lotEntries.forEach(({lot:pu,i})=>{
         const ti2=(pu.qty||0)*(pu.price||0)+(pu.fees||0);
         const lotAvgCost=(pu.qty||0)?ti2/(pu.qty||0):0;
-        // Ligne en affichage seul — clic = popup lot (édition, §4.13) ; boutons FX/suppr. isolés.
-        sub+=`<tr style="cursor:pointer" onclick="lotDialog('${type}',${p.id},${i})" title="Edit lot">
+        // Ligne en affichage seul, non cliquable — édition via crayon dédié (lotDialog, inclut le
+        // taux FX manuel) ; suppression isolée. Uniformisé avec le pattern Sales (§4.13).
+        sub+=`<tr>
           <td class="mono">${pu.date||'<span style="color:var(--red)">— required —</span>'}</td>
           <td class="r mono">${fmtQ(pu.qty)}</td>
           <td class="r mono">${pu.price!=null?fmtNative(pu.price,p.currency):''}</td>
@@ -1031,10 +1051,10 @@ function renderSpot(type){
           <td class="${fxBg(pu.fxRateSource)}" style="font-size:12px">
             ${fxIco(pu.fxRateSource)} ${pu.fxRate!=null?pu.fxRate.toFixed(2):'—'}
           </td>
-          <td class="btn-col">
-            <button onclick="event.stopPropagation();manualLotFx('${type}',${p.id},${i})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
-          </td>
-          <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPurch('${type}',${p.id},${i})">✕</button></td></tr>`;
+          <td class="btn-col" style="white-space:nowrap">
+            <button class="btn btn-sm" onclick="lotDialog('${type}',${p.id},${i})" title="Edit buy">✏️</button>
+            <button class="btn btn-red btn-sm" onclick="delPurch('${type}',${p.id},${i})">✕</button>
+          </td></tr>`;
       });
       if(p.purchases.length){
         const tf=p.purchases.reduce((s,x)=>s+(x.fees||0),0);
@@ -1045,27 +1065,27 @@ function renderSpot(type){
           <td class="r mono" style="font-weight:700;color:var(--accent)">${fmtNative(tf,p.currency)}</td>
           <td class="r mono" style="font-weight:700;color:var(--accent)">${fmtNative(c.ti,p.currency)}</td>
           <td class="r mono" style="font-weight:700;color:var(--accent)">Avg cost: ${fmtNative(c.wac,p.currency)}</td>
-          <td class="r mono" style="font-weight:700;color:var(--accent)">${c.wacBase!=null?'Opt: '+fmt(c.wacBase):'—'}</td>
-          <td></td><td></td></tr>`;
+          <td class="r mono" style="font-weight:700;color:var(--accent);white-space:nowrap">${c.wacBase!=null?'Opt: '+fmt(c.wacBase):'—'}</td>
+          <td></td></tr>`;
       }
       rows+=`<tr><td colspan="${cols}" style="padding:0;border:none"><div class="sub">
         <div class="sub-header">
           <span class="sub-title">Purchase detail — ${p.name||'(unnamed)'}</span>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Add lot</button>
+            <button class="btn btn-blue btn-sm" onclick="addPurch('${type}',${p.id})">+ Buy</button>
             <button class="btn btn-blue btn-sm" onclick="sellFromPos('${type}',${p.id})">- Sell</button>
           </div>
         </div>
         <table class="resp-tbl" style="min-width:500px">${colgroupSub}<thead><tr>
           <th><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();toggleLotSort()" style="padding:2px 4px">${lotSortAsc?'↑':'↓'}</button> Date</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Fees</th>
-          <th class="r">Total invested</th><th class="r">Lot avg cost</th><th>FX</th><th class="btn-col"></th><th></th>
+          <th class="r">Total invested</th><th class="r">Lot avg cost</th><th>FX</th><th class="btn-col"></th>
         </tr></thead><tbody>${sub}</tbody></table>
       </div></td></tr>`;
     }
   });
   const syncBtn=isCto
-    ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync Securities prices</button>`
-    :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync Crypto prices</button>`;
+    ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync prices</button>`
+    :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync prices</button>`;
   const hdrs=`<th></th><th>Name</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
     ${isCto?'<th>Broker</th><th>Class</th>':''}
     <th>CCY</th>
@@ -1130,15 +1150,19 @@ function histoFxBg(source){
 }
 // [v3.0] wb = wacBaseAt(pos, t.sellDate) — coût de base DÉJÀ en devise de reporting courante
 // (plus de tbDisplay/convert). tb = qSold×wb ; null si wb indisponible (orphelin, aucun lot ≤ date,
-// lot ≤ date non résolu). gpOpt/tsOpt/pctOpt exigent fxRateSell résolu ET tb non-null — les deux
-// conjointement (piège spec §4.5/§9). Retourne wb pour la colonne « Avg cost » live.
+// lot ≤ date non résolu).
+// [v3.1] tsOpt (Total S) est DÉCOUPLÉ de tb : il ne dépend que de qSold/priceSell/feesSell (via c.ts)
+// et de fxRateSell — jamais de la position. Il est calculable dès que fxRateSell est résolu (absent/ko
+// ⇒ null : c'est un vrai problème FX). gpOpt/pctOpt exigent TOUJOURS tsOpt != null ET tb != null —
+// pas de P&L sans coût de base (orphelin ⇒ Total S affiché mais G/P « — »). Retourne wb pour « Avg cost ».
 function calcTradeOptions(t,pos){
   const c=calcTrade(t);
   const wb=wacBaseAt(pos,t.sellDate);
   const tb=wb!=null?(t.qSold||0)*wb:null;
-  if(t.fxRateSell==null||t.fxRateSellSource==='ko'||tb==null)
-    return{wb,tb,tsOpt:null,gpOpt:null,pctOpt:null};
-  const tsOpt=c.ts*t.fxRateSell;
+  const fxOk=t.fxRateSell!=null&&t.fxRateSellSource!=='ko';
+  const tsOpt=fxOk?c.ts*t.fxRateSell:null;
+  if(tsOpt==null||tb==null)
+    return{wb,tb,tsOpt,gpOpt:null,pctOpt:null};
   const gpOpt=tsOpt-tb;
   return{wb,tb,tsOpt,gpOpt,pctOpt:tb>0?gpOpt/tb:null};
 }
@@ -1357,7 +1381,7 @@ function renderES(type){
 // à histoDialog(i)/delHisto(i) — jamais l'index visuel post-tri.
 function renderHisto(){
   const currentYear=new Date().getFullYear();
-  const colgroupHisto=makeColgroup([6,7,12,10,10,10,6]);
+  const colgroupHisto=makeColgroup([6,7,6,12,12,12,6]);
   const displayHist=DATA.historique.map((h,i)=>({h,i})).sort((a,b)=>histoSortAsc?a.h.year-b.h.year:b.h.year-a.h.year);
   let rows=displayHist.map(({h,i})=>`<tr>
     <td class="mono">${h.year!=null?h.year:'—'}</td>
@@ -1493,14 +1517,20 @@ async function lotDialog(type,posId,lotIndex){
   const isEdit=lotIndex!=null;
   const lot=isEdit?(pos.purchases||[])[lotIndex]:null;
   if(isEdit&&!lot)return;
+  const cur=pos.currency?pos.currency.toUpperCase():'?';
+  const optCur=getCur().code.toUpperCase();
+  const fields=[
+    {key:'date',label:'Date',type:'date',value:lot?lot.date||'':''},
+    {key:'qty',label:'Quantity',type:'number',value:lot&&lot.qty?lot.qty:''},
+    {key:'price',label:'Unit price',type:'number',value:lot&&lot.price?lot.price:''},
+    {key:'fees',label:'Fees',type:'number',value:lot&&lot.fees?lot.fees:''}
+  ];
+  // FX manuel : uniquement en édition (§4.7, symétrique saleDialog) — un lot en création n'a pas encore de taux.
+  if(isEdit)fields.push({key:'fxManual',label:'FX rate ('+cur+'→'+optCur+', manual)',type:'number',
+    value:lot.fxRate!=null?lot.fxRate.toFixed(4):''});
   const values=await showForm({
-    title:isEdit?'Edit lot':'Add lot',
-    fields:[
-      {key:'date',label:'Date',type:'date',value:lot?lot.date||'':''},
-      {key:'qty',label:'Quantity',type:'number',value:lot&&lot.qty?lot.qty:''},
-      {key:'price',label:'Unit price',type:'number',value:lot&&lot.price?lot.price:''},
-      {key:'fees',label:'Fees',type:'number',value:lot&&lot.fees?lot.fees:''}
-    ],
+    title:isEdit?'Edit buy':'Buy',
+    fields,
     validate:vals=>{
       if(!vals.date||!vals.date.trim())return 'A date is required.';                 // LOT_DATE_REQUIRED
       if(vals.date.trim()>isoToday())return 'Date cannot be in the future.';          // LOT_DATE_FUTURE
@@ -1508,12 +1538,16 @@ async function lotDialog(type,posId,lotIndex){
       if(isNaN(q)||q<=0)return 'Quantity must be a number greater than 0.';          // LOT_QTY_INVALID
       if(vals.price!==''&&(isNaN(strictNum(vals.price))||strictNum(vals.price)<0))return 'Unit price must be a number ≥ 0.';
       if(vals.fees!==''&&(isNaN(strictNum(vals.fees))||strictNum(vals.fees)<0))return 'Fees must be a number ≥ 0.';
+      if(isEdit&&vals.fxManual!==''&&(isNaN(strictNum(vals.fxManual))||strictNum(vals.fxManual)<=0))
+        return 'FX rate must be a number greater than 0.';                            // FX_RATE_INVALID
       return null;
     }
   });
   if(values==null)return;
   upPurch(type,posId,lotIndex,{date:values.date.trim(),qty:parseFloat(values.qty)||0,
     price:parseFloat(values.price)||0,fees:parseFloat(values.fees)||0});
+  // FX manuel appliqué APRÈS upPurch : un taux saisi l'emporte sur l'invalidation liée au changement de date.
+  if(isEdit&&values.fxManual!=='')manualLotFx(type,posId,lotIndex,values.fxManual);
 }
 // [v3.0] manualFx — applique un taux de vente manuel saisi dans le champ « FX rate (manual) »
 // de saleDialog (plus de showPrompt inline). Rejet si NaN/≤0 ; no-op si égal au taux courant
@@ -1529,19 +1563,13 @@ function manualFx(key,id,raw){
 }
 // Saisie manuelle du taux FX d'un lot d'achat — symétrique de manualFx (Sales).
 // Débloque wacBase (fxRateSource='manual' équivaut à une sync auto réussie, §4.5).
-async function manualLotFx(type,posId,lotIndex){
+// Intégré au champ fxManual de lotDialog (plus de showPrompt inline) — même pattern que manualFx.
+function manualLotFx(type,posId,lotIndex,raw){
   const pos=(DATA[type]||[]).find(x=>x.id===posId);if(!pos)return;
   const lot=(pos.purchases||[])[lotIndex];if(!lot)return;
-  const cur=pos.currency?pos.currency.toUpperCase():'?';
-  const optCur=getCur().code.toUpperCase();
+  const p=strictNum(String(raw).replace(',','.'));
+  if(isNaN(p)||p<=0)return;
   const current=lot.fxRate;
-  const v=await showPrompt(
-    'Rate '+cur+'→'+optCur+(current?' (current: '+current.toFixed(4)+')':'')+':',
-    current?current.toFixed(4):''
-  );
-  if(v===null)return;
-  const p=strictNum(v.replace(',','.'));
-  if(isNaN(p)||p<=0){toast('Invalid rate','#7f1d1d');return;}
   if(current!=null&&p===parseFloat(current.toFixed(4)))return;
   DATA[type]=DATA[type].map(x=>{
     if(x.id!==posId)return x;
@@ -1592,7 +1620,8 @@ function upPurch(type,pid,lotIndex,patch){
   });saveData();render();
 }
 // delPurch — retrait par index réel, aucun contrôle croisé sur les cessions ([DÉCISION] soft-signal).
-function delPurch(type,pid,i){
+async function delPurch(type,pid,i){
+  if(!(await showConfirm('Delete?')))return;
   DATA[type]=DATA[type].map(p=>p.id===pid?{...p,purchases:p.purchases.filter((_,j)=>j!==i)}:p);
   saveData();render();
 }
