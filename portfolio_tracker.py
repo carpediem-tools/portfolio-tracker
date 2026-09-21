@@ -599,11 +599,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # totI pour weight_pct : Σ invested_remaining des positions valorisées
             # (livePrice ET wacBase disponibles = invested_remaining non None), déjà en
             # devise de reporting — PAS de convert_fx (piège §4.10 / cf. priced JS).
+            # [v3.4] totV pour valuation_weight_pct : cumulé dans la MÊME boucle et sous le
+            # MÊME filtre que totI (miroir du `priced` JS) — jamais une seconde forme de filtre.
+            # Une ligne qui passe le filtre avec valo_base None n'entre pas dans totV.
             totI = 0.0
+            totV = 0.0
             for pos in positions:
                 c = calc_pos(pos, trades)
                 if pos.get('livePrice') and c['invested_remaining'] is not None:
                     totI += c['invested_remaining']
+                    if c['valo_base'] is not None:
+                        totV += c['valo_base']
 
             E = ""  # cellule vide
             empty_row = {h: E for h in headers}
@@ -614,12 +620,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if 'classe' in ident:
                     ident['class'] = ident.pop('classe')
 
-                inv_rem = calc['invested_remaining']
-                # weight_pct : uniquement si totI > 0, livePrice présent et invested_remaining dispo
-                if totI and pos.get('livePrice') and inv_rem is not None:
+                inv_rem   = calc['invested_remaining']
+                valo_base = calc['valo_base']
+                # Appartenance au périmètre (miroir du `priced` JS), évaluée une seule fois
+                # pour les deux poids — garde des dénominateurs : > 0, jamais le test de véracité.
+                in_scope = bool(pos.get('livePrice')) and inv_rem is not None
+                # weight_pct : part de la ligne dans l'investi (écran : « % Inv. »)
+                if in_scope and totI > 0:
                     rep = round(inv_rem / totI * 100, 1)
                 else:
                     rep = E
+                # [v3.4] valuation_weight_pct : part de la ligne dans la valorisation (écran :
+                # « % Val. ») — numérateur = exactement ce que totV a cumulé.
+                if in_scope and valo_base is not None and totV > 0:
+                    rep_v = round(valo_base / totV * 100, 1)
+                else:
+                    rep_v = E
 
                 # Ligne "position"
                 rows.append({
@@ -632,10 +648,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "wac_base_currency":      display_cur if calc['wac_base'] is not None else E,
                     "invested_remaining":     round(inv_rem, 2) if inv_rem is not None else E,
                     "live_price":             round(calc['live'], 2) if calc['live'] is not None else E,
-                    "valuation":              round(calc['valo_base'], 2) if calc['valo_base'] is not None else E,
+                    "valuation":              round(valo_base, 2) if valo_base is not None else E,
                     "change_pct":             round(calc['evol'] * 100, 1) if calc['evol'] is not None else E,
                     "pnl":                    round(calc['gp'], 2) if calc['gp'] is not None else E,
                     "weight_pct":             rep,
+                    "valuation_weight_pct":   rep_v,
                     "price_source":           pos.get('priceSource', E),
                     "price_date":             pos.get('priceDate',   E),
                     "purchase_date":          E, "purchase_qty":            E,
@@ -659,8 +676,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "wac_base_currency":      E, "invested_remaining": E,
                         "live_price":             E, "valuation":       E,
                         "change_pct":             E, "pnl":             E,
-                        "weight_pct":             E, "price_source":    E,
-                        "price_date":             E,
+                        "weight_pct":             E, "valuation_weight_pct": E,
+                        "price_source":           E, "price_date":       E,
                         "purchase_date":          pu.get('date',  E),
                         "purchase_qty":           pu.get('qty',   E),
                         "purchase_price":         pu.get('price', E),
@@ -684,7 +701,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "row_type", "id", "name", "isin", "ticker", "broker", "class", "currency",
             "qty_total", "qty_remaining", "wac", "wac_base", "wac_base_currency",
             "invested_remaining", "live_price", "valuation", "change_pct", "pnl",
-            "weight_pct", "price_source", "price_date",
+            "weight_pct", "valuation_weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
             "purchase_fx_rate", "purchase_fx_rate_source",
             "purchase_total_invested", "purchase_lot_avg_cost",
@@ -697,7 +714,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "row_type", "id", "name", "ticker", "currency",
             "qty_total", "qty_remaining", "wac", "wac_base", "wac_base_currency",
             "invested_remaining", "live_price", "valuation", "change_pct", "pnl",
-            "weight_pct", "price_source", "price_date",
+            "weight_pct", "valuation_weight_pct", "price_source", "price_date",
             "purchase_date", "purchase_qty", "purchase_price", "purchase_fees",
             "purchase_fx_rate", "purchase_fx_rate_source",
             "purchase_total_invested", "purchase_lot_avg_cost",
