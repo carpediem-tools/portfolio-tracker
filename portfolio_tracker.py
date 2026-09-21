@@ -7,7 +7,7 @@
 ║  Données : portfolio_data.json (même dossier)                ║
 ╚══════════════════════════════════════════════════════════════╝
 """
-import http.server, http.cookiejar, json, urllib.request, urllib.parse
+import http.server, http.cookiejar, json, os, urllib.request, urllib.parse
 import webbrowser, threading, ssl, csv, zipfile, io
 from pathlib import Path
 from datetime import datetime
@@ -40,8 +40,21 @@ def load_data():
         except: pass
     return DEFAULT_DATA
 
+# Écriture atomique : le JSON est d'abord écrit intégralement dans un fichier
+# temporaire du même dossier (même système de fichiers), synchronisé sur disque,
+# puis basculé sur DATA_FILE par os.replace — opération atomique. Un arrêt en
+# cours d'écriture laisse donc l'ancien JSON intact, jamais un fichier tronqué.
+# Le nom du .tmp est FIXE : ce n'est sûr que parce que HTTPServer est mono-thread
+# et ne traite qu'une requête à la fois. Passer à ThreadingHTTPServer imposerait
+# un nom temporaire unique par écriture.
 def save_data(data):
-    DATA_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload = json.dumps(data, indent=2, ensure_ascii=False)
+    tmp = DATA_FILE.with_suffix(DATA_FILE.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(payload)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, DATA_FILE)
 
 def fetch_yahoo(tickers):
     result = {}
@@ -215,8 +228,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(body)
 
     def serve_static(self, filename):
-        filepath = STATIC_DIR / filename
-        if not filepath.exists():
+        # Garde anti-traversée : le chemin est résolu (`..`, liens symboliques,
+        # chemin absolu qui écraserait STATIC_DIR via l'opérateur /) puis vérifié
+        # sous STATIC_DIR. Hors périmètre ou cible non-fichier → 404 nu, sans
+        # message distinguant les deux cas.
+        static_root = STATIC_DIR.resolve()
+        try:
+            filepath = (static_root / filename).resolve()
+        except OSError:
+            self.send_response(404); self.end_headers(); return
+        if not filepath.is_relative_to(static_root) or not filepath.is_file():
             self.send_response(404); self.end_headers(); return
         ext = filepath.suffix.lower()
         content_types = {
