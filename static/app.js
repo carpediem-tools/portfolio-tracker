@@ -805,8 +805,8 @@ function renderOptions(){
 function renderInfo(){
   return`<div class="card">
     <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;margin-bottom:28px">
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v2.0</span></div>
-      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/07/30</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Version</span><span>v2.1</span></div>
+      <div><span style="color:var(--text2);min-width:120px;display:inline-block">Date</span><span>2026/09/21</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">Author</span><span>CarpeDiem</span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">GitHub</span><span><a href="https://github.com/carpediem-tools/portfolio-tracker" target="_blank">carpediem-tools/portfolio-tracker</a></span></div>
       <div><span style="color:var(--text2);min-width:120px;display:inline-block">License</span><span>MIT</span></div>

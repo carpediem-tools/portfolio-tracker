@@ -257,6 +257,11 @@ li{margin:5px 0}
 <td>Cost basis of the quantity still held, in <strong>Options currency</strong> (converted at each lot's historical FX rate)</td>
 </tr>
 <tr>
+<td>% Inv.</td>
+<td><strong>Computed</strong></td>
+<td>The row's share of the tab's <strong>Invested</strong> KPI</td>
+</tr>
+<tr>
 <td>Live price</td>
 <td>Sync or manual</td>
 <td>Native currency, color based on freshness</td>
@@ -265,6 +270,11 @@ li{margin:5px 0}
 <td>Valuation</td>
 <td><strong>Computed</strong></td>
 <td>Remaining qty × live price, in <strong>Options currency</strong></td>
+</tr>
+<tr>
+<td>% Val.</td>
+<td><strong>Computed</strong></td>
+<td>The row's share of the tab's <strong>Valuation</strong> KPI</td>
 </tr>
 <tr>
 <td>Chg.</td>
@@ -276,15 +286,12 @@ li{margin:5px 0}
 <td><strong>Computed</strong></td>
 <td>Valuation − Invested, in <strong>Options currency</strong></td>
 </tr>
-<tr>
-<td>Weight</td>
-<td><strong>Computed</strong></td>
-<td>% of the tab's total invested</td>
-</tr>
 </tbody>
 </table>
 <blockquote>
-<p>The per-row <strong>Invested</strong>, <strong>Valuation</strong>, <strong>P&amp;L</strong> and <strong>Weight</strong> are expressed in the <strong>Options currency</strong>, not the native currency. Invested is converted at each purchase lot's <em>own historical rate</em> (the rate on the lot's date), while Valuation is converted at today's rate — the same rate-matching logic a broker uses for realized results. Only <strong>Avg cost</strong> and <strong>Live price</strong> stay in the instrument's native currency.</p>
+<p><strong>Σ columns.</strong> The headers <strong>Qty Σ</strong>, <strong>Avg cost Σ</strong> and <strong>Invested Σ</strong> sit on a tinted background: they are aggregated from the position's purchase lots, which appear when you expand the row. Hovering any of the three headers recalls it.</p>
+<p><strong>Two weights, two questions.</strong> <strong>% Inv.</strong> answers <em>where did my capital go?</em> and <strong>% Val.</strong> answers <em>where is my exposure today?</em>. They differ as soon as positions have performed differently: a position bought cheap that has multiplied weighs little in % Inv. but a lot in % Val., and a position in loss the other way round. Each column adds up to 100 % and is the row's share of the KPI shown above the table. A row outside the KPIs' scope (no live price, or a cost basis that can't be computed yet because a purchase-lot FX rate is missing) shows <strong>both</strong> weights blank, even when its valuation is known.</p>
+<p>The per-row <strong>Invested</strong>, <strong>Valuation</strong> and <strong>P&amp;L</strong> are expressed in the <strong>Options currency</strong>, not the native currency. Invested is converted at each purchase lot's <em>own historical rate</em> (the rate on the lot's date), while Valuation is converted at today's rate — the same rate-matching logic a broker uses for realized results. Only <strong>Avg cost</strong> and <strong>Live price</strong> stay in the instrument's native currency.</p>
 </blockquote>
 <h3>Creating and editing — everything through popups</h3>
 <p>The table is <strong>display-only</strong>: there are no editable cells. All entry happens in popups:</p>
@@ -608,7 +615,7 @@ li{margin:5px 0}
 <td><strong>Options currency</strong> (consolidated over open Crypto positions)</td>
 </tr>
 <tr>
-<td>Individual CTO and Crypto rows — Invested / Valuation / P&amp;L / Weight</td>
+<td>Individual CTO and Crypto rows — Invested / Valuation / P&amp;L (and the % Inv. / % Val. weights computed from them)</td>
 <td><strong>Options currency</strong> (invested at each lot's historical rate, valuation at today's rate)</td>
 </tr>
 <tr>
@@ -681,7 +688,7 @@ li{margin:5px 0}
 <td>Converted <strong>per lot at each lot's historical rate</strong></td>
 </tr>
 <tr>
-<td>Per-row Valuation, P&amp;L, Weight (Securities/Crypto)</td>
+<td>Per-row Valuation, P&amp;L, % Inv. / % Val. (Securities/Crypto)</td>
 <td>Options currency</td>
 <td>Valuation at today's rate; invested side at historical rates</td>
 </tr>
@@ -1498,7 +1505,7 @@ row structure, identified by the <code>row_type</code> column:</p>
 <tbody>
 <tr>
 <td><code>position</code></td>
-<td>Position summary row (native WAC, Options-currency cost basis, invested, valuation, P&amp;L, change%, weight%)</td>
+<td>Position summary row (native WAC, Options-currency cost basis, invested, valuation, P&amp;L, change%, invested weight%, valuation weight%)</td>
 </tr>
 <tr>
 <td><code>purchase</code></td>
@@ -1513,16 +1520,18 @@ row structure, identified by the <code>row_type</code> column:</p>
 <blockquote>
 <p><strong>Note:</strong> <code>live_price</code> is rounded to 2 decimal places in the export.</p>
 <p><strong>Quantity and cost-basis columns.</strong> Position rows carry both <code>qty_total</code> (bought) and <code>qty_remaining</code> (still held), the native <code>wac</code>, the Options-currency cost basis <code>wac_base</code> with its <code>wac_base_currency</code>, and <code>invested_remaining</code> (cost basis of the held quantity, in the Options currency). Purchase rows carry <code>purchase_fx_rate</code> and <code>purchase_fx_rate_source</code> (the lot's historical rate).</p>
-<p><strong>Percentage columns:</strong> <code>change_pct</code>, <code>weight_pct</code> and <code>pnl_pct</code> are stored as
+<p><strong>Percentage columns:</strong> <code>change_pct</code>, <code>weight_pct</code>, <code>valuation_weight_pct</code> and <code>pnl_pct</code> are stored as
 percentages (value already multiplied by 100) rounded to <strong>1 decimal place</strong> —
 e.g. <code>45.5</code>, <code>-17.9</code>, <code>25.6</code>. They are not raw ratios.</p>
 </blockquote>
 <p>The columns follow the same left-to-right reading order as the UI: identity
 first, then base amounts (quantity, average cost, invested), then the live
 price, then the consolidated block (valuation, change, P&amp;L, weight), then price
-metadata, and finally the per-lot purchase detail.</p>
+metadata, and finally the per-lot purchase detail. The weight block carries two
+columns: <code>weight_pct</code> (share of the tab's invested total, the <strong>% Inv.</strong> column)
+followed by <code>valuation_weight_pct</code> (share of the tab's valuation total, <strong>% Val.</strong>).</p>
 <h3>Columns per file</h3>
-<p><strong><code>securities_live.csv</code></strong> — 29 columns</p>
+<p><strong><code>securities_live.csv</code></strong> — 30 columns</p>
 <table>
 <thead>
 <tr>
@@ -1609,47 +1618,51 @@ metadata, and finally the per-lot purchase detail.</p>
 </tr>
 <tr>
 <td>20</td>
-<td><code>price_source</code></td>
+<td><code>valuation_weight_pct</code></td>
 </tr>
 <tr>
 <td>21</td>
-<td><code>price_date</code></td>
+<td><code>price_source</code></td>
 </tr>
 <tr>
 <td>22</td>
-<td><code>purchase_date</code></td>
+<td><code>price_date</code></td>
 </tr>
 <tr>
 <td>23</td>
-<td><code>purchase_qty</code></td>
+<td><code>purchase_date</code></td>
 </tr>
 <tr>
 <td>24</td>
-<td><code>purchase_price</code></td>
+<td><code>purchase_qty</code></td>
 </tr>
 <tr>
 <td>25</td>
-<td><code>purchase_fees</code></td>
+<td><code>purchase_price</code></td>
 </tr>
 <tr>
 <td>26</td>
-<td><code>purchase_fx_rate</code></td>
+<td><code>purchase_fees</code></td>
 </tr>
 <tr>
 <td>27</td>
-<td><code>purchase_fx_rate_source</code></td>
+<td><code>purchase_fx_rate</code></td>
 </tr>
 <tr>
 <td>28</td>
-<td><code>purchase_total_invested</code></td>
+<td><code>purchase_fx_rate_source</code></td>
 </tr>
 <tr>
 <td>29</td>
+<td><code>purchase_total_invested</code></td>
+</tr>
+<tr>
+<td>30</td>
 <td><code>purchase_lot_avg_cost</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong><code>cryptos_live.csv</code></strong> — 26 columns</p>
+<p><strong><code>cryptos_live.csv</code></strong> — 27 columns</p>
 <table>
 <thead>
 <tr>
@@ -1724,42 +1737,46 @@ metadata, and finally the per-lot purchase detail.</p>
 </tr>
 <tr>
 <td>17</td>
-<td><code>price_source</code></td>
+<td><code>valuation_weight_pct</code></td>
 </tr>
 <tr>
 <td>18</td>
-<td><code>price_date</code></td>
+<td><code>price_source</code></td>
 </tr>
 <tr>
 <td>19</td>
-<td><code>purchase_date</code></td>
+<td><code>price_date</code></td>
 </tr>
 <tr>
 <td>20</td>
-<td><code>purchase_qty</code></td>
+<td><code>purchase_date</code></td>
 </tr>
 <tr>
 <td>21</td>
-<td><code>purchase_price</code></td>
+<td><code>purchase_qty</code></td>
 </tr>
 <tr>
 <td>22</td>
-<td><code>purchase_fees</code></td>
+<td><code>purchase_price</code></td>
 </tr>
 <tr>
 <td>23</td>
-<td><code>purchase_fx_rate</code></td>
+<td><code>purchase_fees</code></td>
 </tr>
 <tr>
 <td>24</td>
-<td><code>purchase_fx_rate_source</code></td>
+<td><code>purchase_fx_rate</code></td>
 </tr>
 <tr>
 <td>25</td>
-<td><code>purchase_total_invested</code></td>
+<td><code>purchase_fx_rate_source</code></td>
 </tr>
 <tr>
 <td>26</td>
+<td><code>purchase_total_invested</code></td>
+</tr>
+<tr>
+<td>27</td>
 <td><code>purchase_lot_avg_cost</code></td>
 </tr>
 </tbody>
@@ -2080,10 +2097,10 @@ FX rate and dated cost basis are both available.</p>
 <h2>16. Info tab</h2>
 <p>A short reference card: version and release date, author, the GitHub repository and the license. The <strong>📖 Documentation</strong> button opens this documentation in a new browser tab.</p>
 <hr />
-<p><em>Portfolio Tracker v2.0 — July 2026</em></p>
+<p><em>Portfolio Tracker v2.1 — September 2026</em></p>
 <hr>
 
-<p style="font-size:13px;color:#9ca3af;text-align:center;margin-top:40px">Portfolio Tracker v2.0 — 2026/07/30</p>
+<p style="font-size:13px;color:#9ca3af;text-align:center;margin-top:40px">Portfolio Tracker v2.1 — 2026/09/21</p>
 
 </div>
 </body>
