@@ -1143,20 +1143,34 @@ function renderSpot(type){
   const calcs=DATA[type].filter(p=>p.archived!==true).map(p=>({...p,c:calcPos(p,trades)}));
   // KPIs consolidés (§4.10) : uniquement positions valorisées (livePrice ET wacBase disponibles → investedRemaining calculable).
   const priced=calcs.filter(p=>p.livePrice&&p.c.investedRemaining!=null);
+  // [v4.3] Les deux colonnes de poids (§4.11) testent l'appartenance à CET ensemble — jamais une
+  // garde reformulée : c'est cette identité qui garantit que chaque colonne somme à 100 %.
+  const pricedSet=new Set(priced);
   const totI=priced.reduce((s,p)=>s+p.c.investedRemaining,0);   // DÉJÀ en devise de reporting — pas de convert() (piège §4.10)
   const totV=priced.reduce((s,p)=>{
     const v=convert(p.c.valo,p.currency,displayCur);            // valo NATIVE → convert() nécessaire
     return v!=null?s+v:s;
   },0);
   const totGP=totV-totI;
-  const cols=isCto?18:15;
+  // [v4.3] cols SUIT le nombre de <th> (colspan de la sous-ligne des lots) : +1 avec « % Val. ».
+  const cols=isCto?19:16;
   // [v4.0] Dernière colonne élargie (Archive + Delete) : redistribution INTERNE, somme constante
   // (112 en CTO, 104 en crypto) — jamais d'ajout ni de retrait de points (cf. CLAUDE.md).
-  const colgroupSpot=makeColgroup(isCto?[2,9,7,7,8,7,4,5,7,7,10,3,6,7,5,7,5,6]:[2,10,9,5,6,9,9,10,3,7,8,6,9,5,6]);
+  // [v4.3] « % Inv. » et « % Val. » (6 points chacune, soit 12) financées par les 5 points de
+  // l'ancienne colonne Weight + 7 repris en interne : CTO name 9→8, isin 7→6, broker 8→7,
+  // classe 7→6, live price 10→8, P&L 7→6 ; crypto name 10→9, ticker 9→8, avg cost 9→8,
+  // invested 9→8, live price 10→9, valuation 8→7, P&L 9→8. Sommes inchangées (112 / 104).
+  const colgroupSpot=makeColgroup(isCto?[2,8,6,7,7,6,4,5,7,7,6,8,3,6,7,6,5,6,6]:[2,9,8,5,6,8,8,6,9,3,7,7,6,6,8,6]);
   const colgroupSub=makeColgroup([18,10,12,10,16,14,10,10]);
   let rows='';
   calcs.forEach(p=>{
     const c=p.c,k=type+p.id,exp=expanded[k];
+    // [v4.3] Valorisation en devise de reporting : EXACTEMENT ce que totV a cumulé (une ligne
+    // dont convert() est null n'entre pas dans totV → « % Val. » vide). Ne jamais la recalculer
+    // par un autre chemin.
+    const vDisp=convert(c.valo,p.currency,displayCur);
+    // [v4.3] Appartenance au périmètre des KPI (§4.10) = appartenance à l'ensemble `priced`.
+    const inScope=pricedSet.has(p);
     // [v4.0] Même tolérance que le bandeau du Dashboard et qu'isClosed : un signal de brèche sur
     // une ligne que le bouton d'archivage accepte serait la même incohérence, à l'échelle de la ligne.
     const breach=c.soldeMin<-QTY_EPS;
@@ -1179,6 +1193,7 @@ function renderSpot(type){
         :fmtQ(c.remaining)}${breach?`<div style="color:var(--red);font-size:9px">Negative stock at ${c.breachDate}</div>`:''}</td>
       <td class="r mono computed">${c.wac>0?fmtNative(c.wac,p.currency):''}</td>
       <td class="r mono computed">${c.investedRemaining!=null?fmt(c.investedRemaining):''}</td>
+      <td class="r mono">${(inScope&&totI>0)?fmtP(c.investedRemaining/totI):''}</td>
       <td class="${pBg(p)} mono">
         ${pIco(p)} ${p.livePrice?fmtNative(p.livePrice,p.currency):'—'}
       </td>
@@ -1186,10 +1201,10 @@ function renderSpot(type){
         <button onclick="event.stopPropagation();manualPrice('${type}',${p.id})" style="background:none;border:none;cursor:pointer;padding:2px"><span style="display:inline-block;transform:scaleX(-1)">✏️</span></button>
       </td>
       <td style="font-size:10px;color:var(--text2)">${p.priceDate||''}</td>
-      <td class="r mono">${(p.livePrice&&c.valo!=null&&convert(c.valo,p.currency,displayCur)!=null)?fmt(convert(c.valo,p.currency,displayCur)):''}</td>
+      <td class="r mono">${(p.livePrice&&c.valo!=null&&vDisp!=null)?fmt(vDisp):''}</td>
+      <td class="r mono">${(inScope&&vDisp!=null&&totV>0)?fmtP(vDisp/totV):''}</td>
       <td class="r mono ${c.evol!=null?gpC(c.evol):''}">${c.evol!=null?fmtP(c.evol):''}</td>
       <td class="r mono ${c.gp!=null?gpC(c.gp):''}">${c.gp!=null?fmt(c.gp):''}</td>
-      <td class="r mono">${c.investedRemaining!=null&&totI?fmtP(c.investedRemaining/totI):''}</td>
       <td class="btn-col" style="white-space:nowrap">
         <button class="btn btn-sm" onclick="event.stopPropagation();archivePos('${type}',${p.id})" title="Archive position">📦</button>
         <button class="btn btn-red btn-sm" onclick="event.stopPropagation();delPos('${type}',${p.id})">🗑</button>
@@ -1255,12 +1270,14 @@ function renderSpot(type){
   const syncBtn=isCto
     ?`<button class="btn btn-green" onclick="syncScope('cto')">🔄 Sync prices</button>`
     :`<button class="btn btn-green" onclick="syncScope('crypto')">🔄 Sync prices</button>`;
+  // Infobulle unique des colonnes agrégées depuis les lots d'achat (fond .computed, marqueur Σ).
+  const LOTS_TIP='Computed from the purchase lots — expand the row to see them';
   const hdrs=`<th></th><th>Name</th>${isCto?'<th>ISIN</th>':''}<th>${isCto?'Yahoo Ticker':'Ticker (id:currency)'}</th>
     ${isCto?'<th>Broker</th><th>Class</th>':''}
     <th>CCY</th>
-    <th class="r computed">Qty ←</th><th class="r computed">Avg cost ←</th><th class="r computed">Invested ←</th>
-    <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">Chg.</th>
-    <th class="r">P&L</th><th class="r">Weight</th><th class="btn-col"></th>`;
+    <th class="r computed" title="${LOTS_TIP}">Qty Σ</th><th class="r computed" title="${LOTS_TIP}">Avg cost Σ</th><th class="r computed" title="${LOTS_TIP}">Invested Σ</th><th class="r">% Inv.</th>
+    <th>Live price</th><th class="btn-col"></th><th>Updated</th><th class="r">Valuation</th><th class="r">% Val.</th><th class="r">Chg.</th>
+    <th class="r">P&L</th><th class="btn-col"></th>`;
   return`<div class="card">
     ${subNav(type)}
     <div class="kpis">
@@ -1287,7 +1304,7 @@ function renderSpot(type){
       <button class="btn" onclick="syncLotFx('${type}')">🔄 Sync FX rates</button>
     </div>
     <div style="overflow-x:auto;max-width:100%">
-      <table class="resp-tbl">${colgroupSpot}<thead><tr>${hdrs}</tr></thead><tbody>${rows}</tbody></table>
+      <table class="resp-tbl" style="min-width:${isCto?1200:1080}px">${colgroupSpot}<thead><tr>${hdrs}</tr></thead><tbody>${rows}</tbody></table>
     </div>
     <div class="legend">
       <span style="background:var(--today-bg);color:var(--today-fg)">🟢 Today's price</span>
